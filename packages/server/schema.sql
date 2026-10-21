@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS challenges (
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     nickname TEXT,
+    token_hash TEXT,                -- SHA-256 of the runner's local capability token
     created_at INTEGER NOT NULL
 );
 

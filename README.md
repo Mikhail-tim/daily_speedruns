@@ -12,6 +12,35 @@ Every day there is **ONE challenge** that is identical for every player worldwid
 
 ---
 
+## 🎮 Games
+
+### 🤖 reCAPTCHA Sprint
+Solve a real 3×3 reCAPTCHA image challenge as fast as possible. The daily seed
+picks both the category and one of Google's two authentic Type-A variants:
+
+- **Static** — select every matching image, then click **VERIFY**.
+- **Dynamic** — each matching image is swapped for a fresh photo when clicked;
+  verify once no matches are left ("Click verify once there are none left").
+
+Prompt wording and categories mirror the real challenges: bicycles, bridges,
+buses, cars, chimneys, crosswalks, fire hydrants, motorcycles, mountains or
+hills, palm trees, and traffic lights. Prompts alternate between "Select all
+images with…" and "Select all squares with…".
+
+The tile images are real reCAPTCHA challenge images bundled from the public
+[MIT-licensed `recaptcha-dataset`](https://github.com/hbcbh1999/recaptcha-dataset).
+The images remain the property of their original owners and are included for
+non-commercial, educational use — see
+`packages/client/public/captcha/ATTRIBUTION.md`.
+
+To re-download or refresh the tile pool:
+
+```bash
+npm run captcha:fetch -w packages/client
+```
+
+---
+
 ## 🚀 Getting Started
 
 ### 1. Install dependencies
@@ -52,3 +81,11 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 3. The server loads the shared deterministic engine (`SnakeGameEngine`) and feeds the exact inputs through a tick simulation using today's authoritative seed.
 4. If the snake crashes, fails to reach the target, or claims a time outside realistic timing tolerances, the run is rejected (HTTP 422).
 5. Only verified runs appear on the daily leaderboard.
+
+Additional protections:
+
+- Challenge dates are validated; future challenges are unavailable and runs are accepted only for the current UTC day.
+- Game IDs are validated against the shared engine registry.
+- Every write requires a per-runner capability token (`X-Runner-Token`). The server stores only its SHA-256 hash, so a runner cannot rename or submit as another identity.
+- Request bodies and input counts are capped before replay.
+- Replay verification proves a run is *valid*, not that a human produced it. Treat the leaderboard as replay-verified rather than bot-proof.

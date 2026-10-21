@@ -107,16 +107,23 @@ export class TypingGameEngine
       return { valid: false, reason: "Inputs must be a non-empty array of keystrokes" };
     }
 
+    if (inputs.length > 5000) {
+      return { valid: false, reason: "Too many keystrokes" };
+    }
+
     // Monotonicity check
     for (let i = 0; i < inputs.length; i++) {
       const inp = inputs[i];
-      if (typeof inp.t !== "number" || inp.t < 0) {
+      if (!inp || typeof inp.t !== "number" || !Number.isFinite(inp.t) || inp.t < 0) {
         return { valid: false, reason: `Invalid timestamp at keystroke ${i + 1}` };
       }
       if (i > 0 && inp.t < inputs[i - 1].t) {
         return { valid: false, reason: "Keystroke timestamps must be non-decreasing" };
       }
-      if (typeof inp.action !== "string") {
+      if (
+        typeof inp.action !== "string" ||
+        (inp.action !== "BACKSPACE" && inp.action.length !== 1)
+      ) {
         return { valid: false, reason: `Invalid keystroke action at index ${i}` };
       }
     }

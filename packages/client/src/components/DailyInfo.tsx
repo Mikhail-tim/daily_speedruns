@@ -3,21 +3,32 @@ import { ChallengeResponse } from "../lib/api.js";
 
 interface DailyInfoProps {
   challenge: ChallengeResponse | null;
+  eventIndex?: string;
 }
 
-export const DailyInfo: React.FC<DailyInfoProps> = ({ challenge }) => {
+export const DailyInfo: React.FC<DailyInfoProps> = ({
+  challenge,
+  eventIndex = "01",
+}) => {
   const [countdown, setCountdown] = useState<string>("");
 
   useEffect(() => {
     function updateCountdown() {
       const now = new Date();
       const tomorrowUTC = new Date(
-        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0)
+        Date.UTC(
+          now.getUTCFullYear(),
+          now.getUTCMonth(),
+          now.getUTCDate() + 1,
+          0,
+          0,
+          0
+        )
       );
       const diffMs = tomorrowUTC.getTime() - now.getTime();
 
       if (diffMs <= 0) {
-        setCountdown("Resetting...");
+        setCountdown("00:00:00");
         return;
       }
 
@@ -25,11 +36,12 @@ export const DailyInfo: React.FC<DailyInfoProps> = ({ challenge }) => {
       const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
       const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
 
-      const hh = String(hours).padStart(2, "0");
-      const mm = String(minutes).padStart(2, "0");
-      const ss = String(seconds).padStart(2, "0");
-
-      setCountdown(`${hh}:${mm}:${ss}`);
+      setCountdown(
+        `${String(hours).padStart(2, "0")}:${String(minutes).padStart(
+          2,
+          "0"
+        )}:${String(seconds).padStart(2, "0")}`
+      );
     }
 
     updateCountdown();
@@ -40,22 +52,22 @@ export const DailyInfo: React.FC<DailyInfoProps> = ({ challenge }) => {
   if (!challenge) return null;
 
   return (
-    <div className="hero-meta-bar">
-      <div className="hero-challenge-info">
-        <div className="hero-title-row">
-          <h2 className="hero-challenge-title">{challenge.name}</h2>
-          <span className="hero-target-pill">{challenge.targetDescription}</span>
+    <div className="arena-event-head">
+      <div className="arena-event-title">
+        <span className="arena-event-kicker">
+          Event {eventIndex} / Daily
+        </span>
+        <h1 className="arena-event-name">{challenge.name}</h1>
+        <div className="arena-event-sub">
+          <span className="arena-target-tag">{challenge.targetDescription}</span>
+          <p className="arena-event-desc">{challenge.description}</p>
         </div>
-        <p className="hero-desc">{challenge.description}</p>
       </div>
 
-      <div style={{ textAlign: "right" }}>
-        <div style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-tertiary)", fontWeight: 700 }}>
-          Resets in
-        </div>
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: "14px", fontWeight: 700, color: "var(--accent-sky)" }}>
-          {countdown}
-        </div>
+      <div className="arena-countdown">
+        <span>{challenge.date} · UTC</span>
+        <span>Resets in</span>
+        <strong>{countdown}</strong>
       </div>
     </div>
   );

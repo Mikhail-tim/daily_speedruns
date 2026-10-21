@@ -1,4 +1,5 @@
 import { Challenge, LeaderboardEntry } from "@daily-speedruns/shared";
+import { timingSafeEqual } from "./auth.js";
 
 /**
  * Returns today's UTC date in YYYY-MM-DD format.
@@ -46,25 +47,72 @@ export async function getOrCreateDailyChallenge(
 }
 
 /**
- * Upserts a user identity (anonymous UUID + optional nickname).
+ * Creates or updates a runner identity.
+ *
+ * Returns false when the supplied token does not match an existing runner.
+ * A legacy runner without a stored token claims it on their first write.
  */
 export async function upsertUser(
   db: D1Database,
   userId: string,
+  tokenHash: string,
   nickname?: string
-): Promise<void> {
+): Promise<boolean> {
   const trimmed = nickname ? nickname.trim().slice(0, 30) : null;
   const now = Date.now();
 
-  await db
-    .prepare(`
-      INSERT INTO users (id, nickname, created_at)
-      VALUES (?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        nickname = COALESCE(?, users.nickname)
-    `)
-    .bind(userId, trimmed, now, trimmed)
-    .run();
+  const existing = await db
+    .prepare("SELECT token_hash as tokenHash FROM users WHERE id = ?")
+    .bind(userId)
+    .first<{ tokenHash: string | null }>();
+
+  if (!existing) {
+    await db
+      .prepare(
+        "INSERT INTO users (id, nickname, token_hash, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO NOTHING"
+      )
+      .bind(userId, trimmed, tokenHash, now)
+      .run();
+
+    // If another request created the user first, re-check the token.
+    const created = await db
+      .prepare("SELECT token_hash as tokenHash FROM users WHERE id = ?")
+      .bind(userId)
+      .first<{ tokenHash: string | null }>();
+    if (created?.tokenHash && created.tokenHash !== tokenHash) {
+      return false;
+    }
+    if (created && !created.tokenHash) {
+      await db
+        .prepare("UPDATE users SET token_hash = ? WHERE id = ?")
+        .bind(tokenHash, userId)
+        .run();
+    }
+    return true;
+  }
+
+  if (!existing.tokenHash) {
+    await db
+      .prepare(
+        "UPDATE users SET token_hash = ?, nickname = COALESCE(?, nickname) WHERE id = ?"
+      )
+      .bind(tokenHash, trimmed, userId)
+      .run();
+    return true;
+  }
+
+  if (!timingSafeEqual(existing.tokenHash, tokenHash)) {
+    return false;
+  }
+
+  if (trimmed) {
+    await db
+      .prepare("UPDATE users SET nickname = ? WHERE id = ?")
+      .bind(trimmed, userId)
+      .run();
+  }
+
+  return true;
 }
 
 /**
@@ -107,23 +155,38 @@ export async function saveRun(
 export async function getLeaderboard(
   db: D1Database,
   dateStr: string,
-  gameId: string = "snake"
+  gameId: string = "snake",
+  currentUserId?: string | null
 ): Promise<LeaderboardEntry[]> {
   const { results } = await db
     .prepare(`
-      SELECT 
-        r.id,
-        r.user_id as userId,
-        COALESCE(u.nickname, 'Runner #' || SUBSTR(r.user_id, 1, 6)) as nickname,
-        r.date,
-        MIN(r.time_ms) as timeMs,
-        r.verified,
-        r.created_at as createdAt
-      FROM runs r
-      LEFT JOIN users u ON r.user_id = u.id
-      WHERE r.date = ? AND r.game_id = ? AND r.verified = 1
-      GROUP BY r.user_id
-      ORDER BY timeMs ASC
+      SELECT
+        id,
+        userId,
+        nickname,
+        date,
+        timeMs,
+        verified,
+        createdAt
+      FROM (
+        SELECT
+          r.id,
+          r.user_id AS userId,
+          COALESCE(u.nickname, 'Runner #' || SUBSTR(r.user_id, 1, 6)) AS nickname,
+          r.date,
+          r.time_ms AS timeMs,
+          r.verified,
+          r.created_at AS createdAt,
+          ROW_NUMBER() OVER (
+            PARTITION BY r.user_id
+            ORDER BY r.time_ms ASC, r.created_at ASC
+          ) AS rowNumber
+        FROM runs r
+        LEFT JOIN users u ON r.user_id = u.id
+        WHERE r.date = ? AND r.game_id = ? AND r.verified = 1
+      )
+      WHERE rowNumber = 1
+      ORDER BY timeMs ASC, createdAt ASC
       LIMIT 100
     `)
     .bind(dateStr, gameId)
@@ -139,13 +202,13 @@ export async function getLeaderboard(
 
   return (results || []).map((row, index) => ({
     id: row.id,
-    userId: row.userId,
     nickname: row.nickname,
     date: row.date,
     timeMs: row.timeMs,
     verified: row.verified === 1,
     createdAt: row.createdAt,
     rank: index + 1,
+    isCurrentUser: currentUserId != null && row.userId === currentUserId,
   }));
 }
 

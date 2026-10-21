@@ -248,7 +248,7 @@ export class SnakeGameEngine
 
     for (let i = 0; i < inputs.length; i++) {
       const inp = inputs[i];
-      if (typeof inp.t !== "number" || inp.t < 0) {
+      if (!inp || typeof inp.t !== "number" || !Number.isFinite(inp.t) || inp.t < 0) {
         return { valid: false, reason: `Invalid input timestamp at index ${i}` };
       }
       if (i > 0 && inp.t < inputs[i - 1].t) {

@@ -4,6 +4,7 @@
 
 const STORAGE_KEY_USER_ID = "ds_user_id";
 const STORAGE_KEY_NICKNAME = "ds_nickname";
+const STORAGE_KEY_RUNNER_TOKEN = "ds_runner_token";
 
 export function getOrCreateUserId(): string {
   let id = localStorage.getItem(STORAGE_KEY_USER_ID);
@@ -12,6 +13,19 @@ export function getOrCreateUserId(): string {
     localStorage.setItem(STORAGE_KEY_USER_ID, id);
   }
   return id;
+}
+
+/**
+ * A local capability token, sent with writes so another runner cannot rename
+ * or submit runs as this identity. It is not an account password.
+ */
+export function getOrCreateRunnerToken(): string {
+  let token = localStorage.getItem(STORAGE_KEY_RUNNER_TOKEN);
+  if (!token) {
+    token = `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, "");
+    localStorage.setItem(STORAGE_KEY_RUNNER_TOKEN, token);
+  }
+  return token;
 }
 
 export function getSavedNickname(): string {

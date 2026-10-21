@@ -4,118 +4,77 @@ import { formatTimeMs } from "../lib/storage.js";
 
 interface LeaderboardProps {
   entries: LeaderboardEntry[];
-  currentUserId: string;
   userBestTimeMs: number | null;
   loading: boolean;
 }
 
 export const Leaderboard: React.FC<LeaderboardProps> = ({
   entries,
-  currentUserId,
   userBestTimeMs,
   loading,
 }) => {
   return (
-    <div className="leaderboard-card">
-      <div className="card-header">
-        <h3 className="card-title">
-          <span>🏆</span>
-          <span>Rankings</span>
-        </h3>
-        {userBestTimeMs != null && (
-          <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-            Your Best:{" "}
-            <strong
-              style={{
-                color: "var(--accent-emerald)",
-                fontFamily: "var(--font-mono)",
-              }}
-            >
-              {formatTimeMs(userBestTimeMs)}
-            </strong>
-          </span>
-        )}
+    <section className="tower-card">
+      <div className="tower-head">
+        <div>
+          <span className="tower-kicker">Live standings</span>
+          <h2>Timing Tower</h2>
+        </div>
+        <span className="tower-count">
+          {entries.length ? `${entries.length} verified` : "00"}
+        </span>
       </div>
 
-      <div style={{ overflowX: "auto" }}>
-        <table className="leaderboard-table">
-          <thead>
-            <tr>
-              <th style={{ width: "40px" }}>#</th>
-              <th>Runner</th>
-              <th style={{ textAlign: "right" }}>Verified Time</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="empty-leaderboard">
-                  {loading
-                    ? "Loading rankings..."
-                    : "No verified runs yet today. Claim #1!"}
-                </td>
-              </tr>
-            ) : (
-              entries.map((entry, idx) => {
-                const rank = idx + 1;
-                const isUser = entry.userId === currentUserId;
-                const rankClass =
-                  rank === 1
-                    ? "rank-1"
-                    : rank === 2
-                    ? "rank-2"
-                    : rank === 3
-                    ? "rank-3"
-                    : "rank-default";
+      {userBestTimeMs != null && (
+        <div className="tower-best">
+          <span>Your best</span>
+          <strong>{formatTimeMs(userBestTimeMs)}</strong>
+        </div>
+      )}
 
-                return (
-                  <tr
-                    key={entry.id}
-                    className={`leaderboard-row ${
-                      isUser ? "is-current-user" : ""
-                    }`}
-                  >
-                    <td>
-                      <span className={`rank-badge ${rankClass}`}>{rank}</span>
-                    </td>
-                    <td>
-                      <span className="runner-name">
-                        {entry.nickname}
-                        {isUser && (
-                          <span
-                            style={{
-                              fontSize: "10px",
-                              padding: "1px 5px",
-                              background: "var(--accent-emerald-light)",
-                              border: "1px solid var(--accent-emerald-border)",
-                              borderRadius: "4px",
-                              color: "var(--accent-emerald)",
-                              fontWeight: 700,
-                            }}
-                          >
-                            YOU
-                          </span>
-                        )}
-                        <span
-                          className="verified-icon"
-                          title="Server Replay Verified"
-                        >
-                          ✓
-                        </span>
-                      </span>
-                    </td>
-                    <td style={{ textAlign: "right" }}>
-                      <span className="time-cell">
-                        {formatTimeMs(entry.timeMs)}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+      <div className="tower-columns">
+        <span>#</span>
+        <span>Runner</span>
+        <span>Time</span>
       </div>
-    </div>
+
+      {entries.length === 0 ? (
+        <div className="tower-empty">
+          <span className="tower-empty-mark">—</span>
+          <p>{loading ? "Loading standings" : "No verified runs yet"}</p>
+          <span>{loading ? "Fetching today's times" : "Claim the first slot."}</span>
+        </div>
+      ) : (
+        <ol className="tower-list">
+          {entries.map((entry, index) => {
+            const rank = index + 1;
+            const isUser = entry.isCurrentUser === true;
+
+            return (
+              <li
+                key={entry.id}
+                className={`tower-row ${
+                  rank <= 3 ? `tower-podium-${rank}` : ""
+                } ${isUser ? "is-user" : ""}`}
+              >
+                <span className="tower-rank">
+                  {String(rank).padStart(2, "0")}
+                </span>
+                <span className="tower-name">
+                  {entry.nickname}
+                  {isUser && <em>You</em>}
+                </span>
+                <span className="tower-time">{formatTimeMs(entry.timeMs)}</span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+
+      <div className="tower-foot">
+        <span>Verified by replay</span>
+        <span>Top 100</span>
+      </div>
+    </section>
   );
 };

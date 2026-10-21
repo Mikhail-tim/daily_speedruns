@@ -276,10 +276,14 @@ export class Game2048Engine
       return { valid: false, reason: "Inputs must be a non-empty array of moves" };
     }
 
+    if (inputs.length > 5000) {
+      return { valid: false, reason: "Too many moves" };
+    }
+
     // Input sanity checks
     for (let i = 0; i < inputs.length; i++) {
       const inp = inputs[i];
-      if (typeof inp.t !== "number" || inp.t < 0) {
+      if (!inp || typeof inp.t !== "number" || !Number.isFinite(inp.t) || inp.t < 0) {
         return { valid: false, reason: `Invalid timestamp at move ${i + 1}` };
       }
       if (i > 0 && inp.t < inputs[i - 1].t) {

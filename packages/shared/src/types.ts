@@ -65,11 +65,12 @@ export interface RunSubmission<TAction = unknown> {
 
 export interface LeaderboardEntry {
   id: string;
-  userId: string;
   nickname: string;
   date: string;
   timeMs: number;
   verified: boolean;
   createdAt: number;
   rank?: number;
+  /** Set by the server for the requesting runner only. */
+  isCurrentUser?: boolean;
 }

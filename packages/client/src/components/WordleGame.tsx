@@ -6,6 +6,11 @@ import {
   TimestampedInput,
 } from "@daily-speedruns/shared";
 import { formatTimeMs } from "../lib/storage.js";
+import { isGameInputLocked } from "../lib/keyboard.js";
+import { useGameSession } from "../hooks/useGameSession.js";
+import { GameShell } from "./GameShell.js";
+import { GameHud } from "./GameHud.js";
+import { ResultOverlay } from "./ResultOverlay.js";
 
 interface WordleGameProps {
   seed: string;
@@ -21,8 +26,6 @@ interface WordleGameProps {
   }>;
 }
 
-type GameStatus = "IDLE" | "PLAYING" | "WON" | "LOST" | "SUBMITTING";
-
 const KEYBOARD_ROWS = [
   ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
   ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
@@ -37,179 +40,154 @@ export const WordleGame: React.FC<WordleGameProps> = ({
 }) => {
   const engineRef = useRef(new WordleGameEngine());
 
-  const [state, setState] = useState<WordleState>(() => engineRef.current.init(seed));
+  const [state, setState] = useState<WordleState>(() =>
+    engineRef.current.init(seed)
+  );
+  const stateRef = useRef<WordleState>(state);
+  const commitState = useCallback((next: WordleState) => {
+    stateRef.current = next;
+    setState(next);
+  }, []);
+
   const [currentGuess, setCurrentGuess] = useState<string>("");
-  const [status, setStatus] = useState<GameStatus>("IDLE");
-  const [elapsedMs, setElapsedMs] = useState<number>(0);
-  const [resultMessage, setResultMessage] = useState<string>("");
-  const [lastVerifiedRank, setLastVerifiedRank] = useState<number | null>(null);
+  const currentGuessRef = useRef<string>("");
   const [shakeRow, setShakeRow] = useState<boolean>(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const startTimeRef = useRef<number>(0);
-  const inputsRef = useRef<TimestampedInput<string>[]>([]);
-  const statusRef = useRef<GameStatus>("IDLE");
-  statusRef.current = status;
-
-  // Reset or initialize new run
-  const resetGame = useCallback(() => {
-    const freshState = engineRef.current.init(seed);
-    setState(freshState);
-    setCurrentGuess("");
-    setStatus("IDLE");
-    setElapsedMs(0);
-    setResultMessage("");
-    setLastVerifiedRank(null);
-    setNotice(null);
-    setShakeRow(false);
-    startTimeRef.current = 0;
-    inputsRef.current = [];
-  }, [seed]);
-
-  useEffect(() => {
-    resetGame();
-  }, [resetGame]);
-
-  // Live stopwatch loop
-  useEffect(() => {
-    if (status !== "PLAYING") return;
-
-    let animId: number;
-    const updateTimer = () => {
-      if (statusRef.current === "PLAYING") {
-        setElapsedMs(Math.round(performance.now() - startTimeRef.current));
-        animId = requestAnimationFrame(updateTimer);
-      }
-    };
-
-    animId = requestAnimationFrame(updateTimer);
-    return () => cancelAnimationFrame(animId);
-  }, [status]);
-
-  // Flash temporary validation notice
-  const showNotice = (msg: string) => {
-    setNotice(msg);
-    setShakeRow(true);
-    setTimeout(() => setShakeRow(false), 500);
-    setTimeout(() => setNotice(null), 1800);
-  };
-
-  // Submit current 5-letter guess
-  const handleSubmitGuess = useCallback(() => {
-    if (statusRef.current === "WON" || statusRef.current === "LOST" || statusRef.current === "SUBMITTING") {
-      return;
-    }
-
-    if (currentGuess.length !== 5) {
-      showNotice("Not enough letters");
-      return;
-    }
-
-    const timeElapsed = Math.round(performance.now() - startTimeRef.current);
-    const stepRes = engineRef.current.step(state, currentGuess);
-
-    if (stepRes.error) {
-      showNotice(stepRes.error);
-      return;
-    }
-
-    // Record verified input guess with timestamp
-    inputsRef.current.push({
-      t: Math.max(0, timeElapsed),
-      action: currentGuess,
-    });
-
-    setState(stepRes.state);
-    setCurrentGuess("");
-
-    if (stepRes.win) {
-      setStatus("SUBMITTING");
-      const claimedTime = timeElapsed;
-      setElapsedMs(claimedTime);
-
+  const {
+    status,
+    statusRef,
+    elapsedMs,
+    resultMessage,
+    rank,
+    begin,
+    now,
+    record,
+    submit,
+    fail,
+    reset: resetSession,
+  } = useGameSession<string>({
+    onRunFinished,
+    winMessage: "Word solved!",
+    onWin: () => {
       confetti({
         particleCount: 80,
         spread: 70,
         origin: { y: 0.6 },
         colors: ["#10b981", "#6366f1", "#f59e0b"],
       });
+    },
+  });
 
-      onRunFinished(claimedTime, [...inputsRef.current])
-        .then((res) => {
-          if (res.verified) {
-            setStatus("WON");
-            setLastVerifiedRank(res.rank ?? null);
-            setResultMessage(
-              res.rank
-                ? `Verified! You claimed rank #${res.rank}!`
-                : "Run Verified!"
-            );
-          } else {
-            setStatus("LOST");
-            setResultMessage(res.error || "Replay verification failed");
-          }
-        })
-        .catch((err) => {
-          setStatus("LOST");
-          setResultMessage(err.message || "Network error");
-        });
+  const resetGame = useCallback(() => {
+    const freshState = engineRef.current.init(seed);
+    stateRef.current = freshState;
+    setState(freshState);
+    currentGuessRef.current = "";
+    setCurrentGuess("");
+    setNotice(null);
+    setShakeRow(false);
+    resetSession();
+  }, [seed, resetSession]);
+
+  useEffect(() => {
+    resetGame();
+  }, [resetGame]);
+
+  const showNotice = useCallback((msg: string) => {
+    setNotice(msg);
+    setShakeRow(true);
+    window.setTimeout(() => setShakeRow(false), 500);
+    window.setTimeout(() => setNotice(null), 1800);
+  }, []);
+
+  const handleSubmitGuess = useCallback(() => {
+    const currentStatus = statusRef.current;
+    if (
+      currentStatus === "WON" ||
+      currentStatus === "LOST" ||
+      currentStatus === "SUBMITTING"
+    ) {
+      return;
+    }
+
+    const guess = currentGuessRef.current;
+    if (guess.length !== 5) {
+      showNotice("Not enough letters");
+      return;
+    }
+
+    const stepRes = engineRef.current.step(stateRef.current, guess);
+    if (stepRes.error) {
+      showNotice(stepRes.error);
+      return;
+    }
+
+    const t = Math.max(1, now());
+    record(guess, t);
+    commitState(stepRes.state);
+    currentGuessRef.current = "";
+    setCurrentGuess("");
+
+    if (stepRes.win) {
+      submit(t);
       return;
     }
 
     if (stepRes.gameOver) {
-      setStatus("LOST");
-      setResultMessage(`Word was: ${stepRes.state.targetWord}`);
+      fail(`Word was: ${stepRes.state.targetWord}`);
     }
-  }, [currentGuess, state, onRunFinished]);
+  }, [now, record, commitState, submit, fail, showNotice, statusRef]);
 
-  // Handle typing letters
   const handleLetter = useCallback(
     (char: string) => {
-      if (statusRef.current === "WON" || statusRef.current === "LOST" || statusRef.current === "SUBMITTING") {
+      if (isGameInputLocked()) return;
+      const currentStatus = statusRef.current;
+      if (
+        currentStatus === "WON" ||
+        currentStatus === "LOST" ||
+        currentStatus === "SUBMITTING"
+      ) {
         return;
       }
 
-      // Start run on first keystroke
-      if (statusRef.current === "IDLE") {
-        startTimeRef.current = performance.now();
-        setStatus("PLAYING");
-      }
+      begin();
 
-      if (currentGuess.length < 5) {
-        setCurrentGuess((prev) => prev + char.toUpperCase());
-      }
+      if (currentGuessRef.current.length >= 5) return;
+      const next = currentGuessRef.current + char.toUpperCase();
+      currentGuessRef.current = next;
+      setCurrentGuess(next);
     },
-    [currentGuess]
+    [begin, statusRef]
   );
 
-  // Handle backspace
   const handleBackspace = useCallback(() => {
-    if (statusRef.current === "WON" || statusRef.current === "LOST" || statusRef.current === "SUBMITTING") {
+    const currentStatus = statusRef.current;
+    if (
+      currentStatus === "WON" ||
+      currentStatus === "LOST" ||
+      currentStatus === "SUBMITTING"
+    ) {
       return;
     }
-    setCurrentGuess((prev) => prev.slice(0, -1));
-  }, []);
+    const next = currentGuessRef.current.slice(0, -1);
+    currentGuessRef.current = next;
+    setCurrentGuess(next);
+  }, [statusRef]);
 
-  // Physical keyboard listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isGameInputLocked()) return;
       if (e.target instanceof HTMLInputElement) return;
 
-      // Single-button restart on Space / Enter when game is over
-      if (e.code === "Space" || e.code === "Enter") {
-        if (statusRef.current === "WON" || statusRef.current === "LOST") {
+      if (statusRef.current === "WON" || statusRef.current === "LOST") {
+        if (e.code === "Space" || e.code === "Enter" || e.code === "KeyR") {
           e.preventDefault();
           resetGame();
           return;
         }
       }
 
-      if (e.code === "KeyR" && (statusRef.current === "WON" || statusRef.current === "LOST")) {
-        resetGame();
-        return;
-      }
-
-      // Toggle focus mode
       if (e.code === "KeyF") {
         onToggleFocus();
         return;
@@ -234,44 +212,39 @@ export const WordleGame: React.FC<WordleGameProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleBackspace, handleLetter, handleSubmitGuess, onToggleFocus, resetGame]);
+  }, [
+    handleBackspace,
+    handleLetter,
+    handleSubmitGuess,
+    onToggleFocus,
+    resetGame,
+    statusRef,
+  ]);
 
   return (
-    <div className="game-card wordle-card">
-      {/* Game HUD Bar */}
-      <div className="game-hud">
-        <div className="hud-stat">
-          <span className="hud-label">Attempts</span>
-          <span className="hud-value highlight">
-            {state.guesses.length} / {state.maxGuesses}
-          </span>
-        </div>
+    <GameShell className="wordle-card">
+      <GameHud
+        stats={[
+          {
+            label: "Attempts",
+            value: `${state.guesses.length} / ${state.maxGuesses}`,
+            tone: "highlight",
+          },
+          {
+            label: "Stopwatch",
+            value: formatTimeMs(elapsedMs),
+            align: "right",
+            tone: "timer",
+          },
+        ]}
+      />
 
-        <div className="hud-stat" style={{ textAlign: "right" }}>
-          <span className="hud-label">Stopwatch</span>
-          <span className="hud-value timer">{formatTimeMs(elapsedMs)}</span>
-        </div>
-      </div>
-
-      {/* Notice Toast */}
       {notice && (
-        <div
-          style={{
-            textAlign: "center",
-            padding: "6px 14px",
-            background: "var(--accent-rose-light)",
-            border: "1px solid var(--accent-rose)",
-            color: "var(--accent-rose)",
-            borderRadius: "var(--radius-sm)",
-            fontSize: "13px",
-            fontWeight: 700,
-          }}
-        >
+        <div className="wordle-notice" role="status">
           {notice}
         </div>
       )}
 
-      {/* 6x5 Grid */}
       <div className="wordle-grid-container">
         {Array.from({ length: 6 }).map((_, rowIndex) => {
           const isCurrentRow = rowIndex === state.guesses.length;
@@ -279,14 +252,16 @@ export const WordleGame: React.FC<WordleGameProps> = ({
           const rowGuess = isSubmitted
             ? state.guesses[rowIndex]
             : isCurrentRow
-            ? currentGuess
-            : "";
+              ? currentGuess
+              : "";
           const rowEval = isSubmitted ? state.evaluations[rowIndex] : null;
 
           return (
             <div
               key={rowIndex}
-              className={`wordle-row ${isCurrentRow && shakeRow ? "shake" : ""}`}
+              className={`wordle-row ${
+                isCurrentRow && shakeRow ? "shake" : ""
+              }`}
             >
               {Array.from({ length: 5 }).map((_, colIndex) => {
                 const char = rowGuess[colIndex] || "";
@@ -310,53 +285,27 @@ export const WordleGame: React.FC<WordleGameProps> = ({
         })}
       </div>
 
-      {/* Overlays on Win / Loss */}
       {status === "WON" && (
-        <div className="canvas-overlay" style={{ borderRadius: "var(--radius-lg)" }}>
-          <h3 className="overlay-title win">Solved!</h3>
-          <div
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: "30px",
-              color: "var(--accent-sky)",
-              fontWeight: 700,
-            }}
-          >
-            {formatTimeMs(elapsedMs)}
-          </div>
-          {lastVerifiedRank && (
-            <div
-              style={{
-                padding: "3px 12px",
-                borderRadius: "999px",
-                background: "var(--accent-amber-light)",
-                border: "1px solid #fde68a",
-                color: "var(--accent-amber)",
-                fontWeight: 700,
-                fontSize: "13px",
-              }}
-            >
-              🏆 #{lastVerifiedRank} on Today's Leaderboard
-            </div>
-          )}
-          <p className="overlay-subtitle">{resultMessage}</p>
-          <button className="btn-primary" onClick={resetGame}>
-            ⚡ Beat Your Record (<kbd style={{ fontFamily: "var(--font-mono)", fontSize: "11px" }}>Space</kbd>)
-          </button>
-        </div>
+        <ResultOverlay
+          variant="win"
+          title="Solved!"
+          timeMs={elapsedMs}
+          rank={rank}
+          message={resultMessage}
+          onRetry={resetGame}
+        />
       )}
 
       {status === "LOST" && (
-        <div className="canvas-overlay" style={{ borderRadius: "var(--radius-lg)" }}>
-          <h3 className="overlay-title gameover">Unsolved</h3>
-          <p className="overlay-subtitle">{resultMessage}</p>
-          <button className="btn-primary" onClick={resetGame}>
-            🔄 Try Again (<kbd style={{ fontFamily: "var(--font-mono)", fontSize: "11px" }}>Space</kbd>)
-          </button>
-        </div>
+        <ResultOverlay
+          variant="lost"
+          title="Unsolved"
+          message={resultMessage}
+          onRetry={resetGame}
+          retryLabel="Try Again"
+        />
       )}
 
-      {/* Virtual Keyboard */}
       <div className="wordle-keyboard" aria-label="Virtual Keyboard">
         {KEYBOARD_ROWS.map((row, rIdx) => (
           <div key={rIdx} className="keyboard-row">
@@ -387,7 +336,6 @@ export const WordleGame: React.FC<WordleGameProps> = ({
         ))}
       </div>
 
-      {/* Focus Toolbar */}
       <div className="controls-bar" style={{ marginTop: "4px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span>Type with your keyboard or tap keys</span>
@@ -399,10 +347,12 @@ export const WordleGame: React.FC<WordleGameProps> = ({
           onClick={onToggleFocus}
           title="Focus / Pop-up mode"
         >
-          <span>{isFocusMode ? "✕ Exit Focus" : "🎯 Focus Mode"}</span>
-          <span className="keycap" style={{ fontSize: "10px" }}>F</span>
+          <span>{isFocusMode ? "Exit Focus" : "Focus Mode"}</span>
+          <span className="keycap" style={{ fontSize: "10px" }}>
+            F
+          </span>
         </button>
       </div>
-    </div>
+    </GameShell>
   );
 };

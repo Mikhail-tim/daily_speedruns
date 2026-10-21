@@ -6,6 +6,11 @@ import {
   TimestampedInput,
 } from "@daily-speedruns/shared";
 import { formatTimeMs } from "../lib/storage.js";
+import { isGameInputLocked } from "../lib/keyboard.js";
+import { useGameSession } from "../hooks/useGameSession.js";
+import { GameShell } from "./GameShell.js";
+import { GameHud } from "./GameHud.js";
+import { ResultOverlay } from "./ResultOverlay.js";
 
 interface TypingGameProps {
   seed: string;
@@ -21,8 +26,6 @@ interface TypingGameProps {
   }>;
 }
 
-type GameStatus = "IDLE" | "PLAYING" | "WON" | "SUBMITTING";
-
 export const TypingGame: React.FC<TypingGameProps> = ({
   seed,
   isFocusMode,
@@ -32,162 +35,140 @@ export const TypingGame: React.FC<TypingGameProps> = ({
   const engineRef = useRef(new TypingGameEngine());
   const inputAreaRef = useRef<HTMLInputElement | null>(null);
 
-  const [state, setState] = useState<TypingState>(() => engineRef.current.init(seed));
-  const [status, setStatus] = useState<GameStatus>("IDLE");
-  const [elapsedMs, setElapsedMs] = useState<number>(0);
+  const [state, setState] = useState<TypingState>(() =>
+    engineRef.current.init(seed)
+  );
+  const stateRef = useRef<TypingState>(state);
+  const commitState = useCallback((next: TypingState) => {
+    stateRef.current = next;
+    setState(next);
+  }, []);
+
   const [liveWpm, setLiveWpm] = useState<number>(0);
   const [liveAccuracy, setLiveAccuracy] = useState<number>(100);
-  const [resultMessage, setResultMessage] = useState<string>("");
-  const [lastVerifiedRank, setLastVerifiedRank] = useState<number | null>(null);
-  const [summaryData, setSummaryData] = useState<{ wpm: number; accuracy: number } | null>(null);
+  const [summaryData, setSummaryData] = useState<{
+    wpm: number;
+    accuracy: number;
+  } | null>(null);
 
-  const startTimeRef = useRef<number>(0);
-  const inputsRef = useRef<TimestampedInput<string>[]>([]);
-  const statusRef = useRef<GameStatus>("IDLE");
-  statusRef.current = status;
+  const {
+    status,
+    statusRef,
+    elapsedMs,
+    resultMessage,
+    rank,
+    begin,
+    record,
+    submit,
+    reset: resetSession,
+  } = useGameSession<string>({
+    onRunFinished,
+    winMessage: "Sprint verified!",
+    onWin: () => {
+      confetti({
+        particleCount: 80,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ["#059669", "#0284c7", "#f59e0b"],
+      });
+    },
+  });
 
-  // Reset or start fresh run
   const resetGame = useCallback(() => {
     const fresh = engineRef.current.init(seed);
+    stateRef.current = fresh;
     setState(fresh);
-    setStatus("IDLE");
-    setElapsedMs(0);
     setLiveWpm(0);
     setLiveAccuracy(100);
-    setResultMessage("");
-    setLastVerifiedRank(null);
     setSummaryData(null);
-    startTimeRef.current = 0;
-    inputsRef.current = [];
-    if (inputAreaRef.current) {
-      inputAreaRef.current.focus();
-    }
-  }, [seed]);
+    resetSession();
+    window.setTimeout(() => inputAreaRef.current?.focus(), 0);
+  }, [seed, resetSession]);
 
   useEffect(() => {
     resetGame();
   }, [resetGame]);
 
-  // Live stopwatch and live WPM/Accuracy meter
+  // Live speed/accuracy meters derived from the shared stopwatch.
   useEffect(() => {
-    if (status !== "PLAYING") return;
+    if (status !== "PLAYING" || elapsedMs < 500) return;
 
-    let animId: number;
-    const updateStats = () => {
-      if (statusRef.current === "PLAYING") {
-        const now = performance.now();
-        const elapsed = Math.round(now - startTimeRef.current);
-        setElapsedMs(elapsed);
+    const minutes = elapsedMs / 60000;
+    const wordsTyped = state.typedBuffer.length / 5;
+    setLiveWpm(Math.max(0, Math.round(wordsTyped / minutes)));
 
-        if (elapsed > 500) {
-          const minutes = elapsed / 60000;
-          const wordsTyped = state.typedBuffer.length / 5;
-          const currentWpm = Math.round(wordsTyped / minutes);
-          setLiveWpm(Math.max(0, currentWpm));
+    if (state.totalKeystrokes > 0) {
+      setLiveAccuracy(
+        Math.max(
+          0,
+          Math.min(
+            100,
+            Math.round(
+              ((state.totalKeystrokes - state.errorCount) /
+                state.totalKeystrokes) *
+                100
+            )
+          )
+        )
+      );
+    }
+  }, [
+    status,
+    elapsedMs,
+    state.typedBuffer.length,
+    state.totalKeystrokes,
+    state.errorCount,
+  ]);
 
-          if (state.totalKeystrokes > 0) {
-            const acc = Math.max(
-              0,
-              Math.min(
-                100,
-                Math.round(
-                  ((state.totalKeystrokes - state.errorCount) / state.totalKeystrokes) *
-                    100
-                )
-              )
-            );
-            setLiveAccuracy(acc);
-          }
-        }
-
-        animId = requestAnimationFrame(updateStats);
-      }
-    };
-
-    animId = requestAnimationFrame(updateStats);
-    return () => cancelAnimationFrame(animId);
-  }, [status, state.typedBuffer.length, state.totalKeystrokes, state.errorCount]);
-
-  // Process a keystroke
   const handleKeystroke = useCallback(
     (action: string) => {
-      if (statusRef.current === "WON" || statusRef.current === "SUBMITTING") {
+      const currentStatus = statusRef.current;
+      if (
+        currentStatus === "WON" ||
+        currentStatus === "LOST" ||
+        currentStatus === "SUBMITTING"
+      ) {
         return;
       }
 
-      // Start run on first keystroke
-      if (statusRef.current === "IDLE") {
-        startTimeRef.current = performance.now();
-        setStatus("PLAYING");
-      }
+      const t = begin();
+      record(action, t);
 
-      const timeElapsed = Math.round(performance.now() - startTimeRef.current);
-      inputsRef.current.push({
-        t: Math.max(0, timeElapsed),
-        action,
-      });
-
-      const stepRes = engineRef.current.step(state, action);
-      setState(stepRes.state);
+      const stepRes = engineRef.current.step(stateRef.current, action);
+      commitState(stepRes.state);
 
       if (stepRes.win) {
-        setStatus("SUBMITTING");
-        const claimedTime = timeElapsed;
-        setElapsedMs(claimedTime);
-
-        // Calculate final stats
-        const minutes = claimedTime / 60000;
-        const wpm = Math.round(stepRes.state.targetText.length / 5 / minutes);
+        const finalState = stepRes.state;
+        const minutes = Math.max(t, 1) / 60000;
+        const wpm = Math.round(finalState.targetText.length / 5 / minutes);
         const accuracy = Math.max(
           0,
           Math.min(
             100,
             Math.round(
-              ((stepRes.state.targetText.length - stepRes.state.errorCount) /
-                Math.max(stepRes.state.targetText.length, stepRes.state.totalKeystrokes)) *
+              ((finalState.targetText.length - finalState.errorCount) /
+                Math.max(
+                  finalState.targetText.length,
+                  finalState.totalKeystrokes
+                )) *
                 100
             )
           )
         );
 
         setSummaryData({ wpm, accuracy });
-
-        confetti({
-          particleCount: 80,
-          spread: 70,
-          origin: { y: 0.6 },
-          colors: ["#059669", "#0284c7", "#f59e0b"],
-        });
-
-        onRunFinished(claimedTime, [...inputsRef.current])
-          .then((res) => {
-            if (res.verified) {
-              setStatus("WON");
-              setLastVerifiedRank(res.rank ?? null);
-              setResultMessage(
-                res.rank
-                  ? `Verified! You claimed rank #${res.rank}!`
-                  : "Run Verified!"
-              );
-            } else {
-              setStatus("IDLE");
-              setResultMessage(res.error || "Anti-cheat rejected run");
-            }
-          })
-          .catch((err) => {
-            setStatus("IDLE");
-            setResultMessage(err.message || "Network error");
-          });
+        submit(Math.max(1, t));
       }
     },
-    [state, onRunFinished]
+    [begin, record, commitState, submit, statusRef]
   );
 
-  // Keyboard event listener
+  // Global keyboard listener (the hidden input keeps mobile focus alive).
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Single button restart on Space / Enter when won
-      if (statusRef.current === "WON") {
+      if (isGameInputLocked()) return;
+
+      if (statusRef.current === "WON" || statusRef.current === "LOST") {
         if (e.code === "Space" || e.code === "Enter" || e.code === "KeyR") {
           e.preventDefault();
           resetGame();
@@ -195,7 +176,6 @@ export const TypingGame: React.FC<TypingGameProps> = ({
         }
       }
 
-      // Focus mode toggle
       if (e.code === "KeyF" && !(e.target instanceof HTMLInputElement)) {
         onToggleFocus();
         return;
@@ -206,7 +186,11 @@ export const TypingGame: React.FC<TypingGameProps> = ({
         return;
       }
 
-      if (statusRef.current === "WON" || statusRef.current === "SUBMITTING") {
+      if (
+        statusRef.current === "WON" ||
+        statusRef.current === "LOST" ||
+        statusRef.current === "SUBMITTING"
+      ) {
         return;
       }
 
@@ -216,7 +200,6 @@ export const TypingGame: React.FC<TypingGameProps> = ({
         return;
       }
 
-      // Printable single characters
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         handleKeystroke(e.key);
@@ -225,7 +208,13 @@ export const TypingGame: React.FC<TypingGameProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleKeystroke, resetGame, onToggleFocus, isFocusMode]);
+  }, [
+    handleKeystroke,
+    resetGame,
+    onToggleFocus,
+    isFocusMode,
+    statusRef,
+  ]);
 
   const targetChars = state.targetText.split("");
   const typedLength = state.typedBuffer.length;
@@ -235,42 +224,51 @@ export const TypingGame: React.FC<TypingGameProps> = ({
   );
 
   return (
-    <div
-      className="game-card typing-card"
+    <GameShell
+      className="typing-card"
       onClick={() => inputAreaRef.current?.focus()}
     >
-      {/* Hidden dummy input to catch mobile focus */}
       <input
         ref={inputAreaRef}
         type="text"
         aria-label="Typing Input Area"
-        style={{ position: "absolute", opacity: 0, pointerEvents: "none", width: 1, height: 1 }}
+        style={{
+          position: "absolute",
+          opacity: 0,
+          pointerEvents: "none",
+          width: 1,
+          height: 1,
+        }}
         autoFocus
       />
 
-      {/* Typing HUD Bar */}
-      <div className="game-hud">
-        <div className="hud-stat">
-          <span className="hud-label">Speed</span>
-          <span className="hud-value highlight">
-            {liveWpm} <span style={{ fontSize: "13px", fontWeight: 600 }}>WPM</span>
-          </span>
-        </div>
+      <GameHud
+        stats={[
+          {
+            label: "Speed",
+            value: (
+              <>
+                {liveWpm}{" "}
+                <span style={{ fontSize: "13px", fontWeight: 600 }}>WPM</span>
+              </>
+            ),
+            tone: "highlight",
+          },
+          {
+            label: "Accuracy",
+            value: `${liveAccuracy}%`,
+            align: "center",
+            tone: liveAccuracy < 90 ? "danger" : "default",
+          },
+          {
+            label: "Stopwatch",
+            value: formatTimeMs(elapsedMs),
+            align: "right",
+            tone: "timer",
+          },
+        ]}
+      />
 
-        <div className="hud-stat" style={{ textAlign: "center" }}>
-          <span className="hud-label">Accuracy</span>
-          <span className="hud-value" style={{ color: liveAccuracy < 90 ? "var(--accent-rose)" : "var(--accent-emerald)" }}>
-            {liveAccuracy}%
-          </span>
-        </div>
-
-        <div className="hud-stat" style={{ textAlign: "right" }}>
-          <span className="hud-label">Stopwatch</span>
-          <span className="hud-value timer">{formatTimeMs(elapsedMs)}</span>
-        </div>
-      </div>
-
-      {/* Progress Bar */}
       <div className="typing-progress-track">
         <div
           className="typing-progress-fill"
@@ -278,7 +276,6 @@ export const TypingGame: React.FC<TypingGameProps> = ({
         />
       </div>
 
-      {/* Paragraph Display Container */}
       <div className="typing-text-container">
         {targetChars.map((char, index) => {
           const isTyped = index < typedLength;
@@ -287,7 +284,8 @@ export const TypingGame: React.FC<TypingGameProps> = ({
 
           if (isTyped) {
             const actualTyped = state.typedBuffer[index];
-            charClass += actualTyped === char ? " char-correct" : " char-incorrect";
+            charClass +=
+              actualTyped === char ? " char-correct" : " char-incorrect";
           } else {
             charClass += " char-pending";
           }
@@ -301,67 +299,38 @@ export const TypingGame: React.FC<TypingGameProps> = ({
         })}
       </div>
 
-      {/* Result Overlay on Win */}
       {status === "WON" && (
-        <div className="canvas-overlay" style={{ borderRadius: "var(--radius-lg)" }}>
-          <h3 className="overlay-title win">Sprint Finished!</h3>
-          <div
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: "32px",
-              color: "var(--accent-sky)",
-              fontWeight: 700,
-            }}
-          >
-            {formatTimeMs(elapsedMs)}
-          </div>
-
-          {summaryData && (
-            <div style={{ display: "flex", gap: "16px", margin: "4px 0" }}>
-              <div style={{ textAlign: "center" }}>
-                <span style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-tertiary)", fontWeight: 700 }}>
-                  Speed
-                </span>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: "20px", fontWeight: 800, color: "var(--accent-emerald)" }}>
-                  {summaryData.wpm} WPM
-                </div>
-              </div>
-
-              <div style={{ textAlign: "center" }}>
-                <span style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-tertiary)", fontWeight: 700 }}>
-                  Accuracy
-                </span>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: "20px", fontWeight: 800, color: "var(--text-primary)" }}>
-                  {summaryData.accuracy}%
-                </div>
-              </div>
-            </div>
-          )}
-
-          {lastVerifiedRank && (
-            <div
-              style={{
-                padding: "3px 12px",
-                borderRadius: "999px",
-                background: "var(--accent-amber-light)",
-                border: "1px solid #fde68a",
-                color: "var(--accent-amber)",
-                fontWeight: 700,
-                fontSize: "13px",
-              }}
-            >
-              🏆 #{lastVerifiedRank} on Today's Leaderboard
-            </div>
-          )}
-
-          <p className="overlay-subtitle">{resultMessage}</p>
-          <button className="btn-primary" onClick={resetGame}>
-            ⚡ Beat Your Record (<kbd style={{ fontFamily: "var(--font-mono)", fontSize: "11px" }}>Space</kbd>)
-          </button>
-        </div>
+        <ResultOverlay
+          variant="win"
+          title="Sprint Finished!"
+          timeMs={elapsedMs}
+          stats={[
+            {
+              label: "Speed",
+              value: `${summaryData?.wpm ?? 0} WPM`,
+              tone: "success",
+            },
+            {
+              label: "Accuracy",
+              value: `${summaryData?.accuracy ?? 0}%`,
+            },
+          ]}
+          rank={rank}
+          message={resultMessage}
+          onRetry={resetGame}
+        />
       )}
 
-      {/* Controls & Focus Toolbar */}
+      {status === "LOST" && (
+        <ResultOverlay
+          variant="lost"
+          title="Run Not Verified"
+          message={resultMessage}
+          onRetry={resetGame}
+          retryLabel="Try Again"
+        />
+      )}
+
       <div className="controls-bar" style={{ marginTop: "4px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span>Start typing to begin</span>
@@ -376,10 +345,12 @@ export const TypingGame: React.FC<TypingGameProps> = ({
           onClick={onToggleFocus}
           title="Focus / Pop-up mode"
         >
-          <span>{isFocusMode ? "✕ Exit Focus" : "🎯 Focus Mode"}</span>
-          <span className="keycap" style={{ fontSize: "10px" }}>F</span>
+          <span>{isFocusMode ? "Exit Focus" : "Focus Mode"}</span>
+          <span className="keycap" style={{ fontSize: "10px" }}>
+            F
+          </span>
         </button>
       </div>
-    </div>
+    </GameShell>
   );
 };

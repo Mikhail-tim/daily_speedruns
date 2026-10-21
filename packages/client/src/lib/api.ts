@@ -22,6 +22,8 @@ export interface SubmissionResponse {
   reason?: string;
 }
 
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+
 export async function fetchTodayChallenge(
   date?: string,
   gameId?: string
@@ -31,7 +33,8 @@ export async function fetchTodayChallenge(
   if (gameId) params.set("game", gameId);
 
   const qs = params.toString();
-  const url = qs ? `/api/challenge/today?${qs}` : "/api/challenge/today";
+  const path = qs ? `/api/challenge/today?${qs}` : "/api/challenge/today";
+  const url = `${API_BASE}${path}`;
 
   const res = await fetch(url);
   if (!res.ok) {
@@ -50,18 +53,22 @@ export async function fetchLeaderboard(
   if (userId) params.set("userId", userId);
   if (gameId) params.set("game", gameId);
 
-  const res = await fetch(`/api/leaderboard?${params.toString()}`);
+  const res = await fetch(`${API_BASE}/api/leaderboard?${params.toString()}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch leaderboard: ${res.statusText}`);
   }
   return res.json();
 }
 
-export async function submitRun(run: RunSubmission): Promise<SubmissionResponse> {
-  const res = await fetch("/api/runs", {
+export async function submitRun(
+  run: RunSubmission,
+  runnerToken: string
+): Promise<SubmissionResponse> {
+  const res = await fetch(`${API_BASE}/api/runs`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "X-Runner-Token": runnerToken,
     },
     body: JSON.stringify(run),
   });
@@ -79,11 +86,16 @@ export async function submitRun(run: RunSubmission): Promise<SubmissionResponse>
 
 export async function updateNicknameOnServer(
   userId: string,
-  nickname: string
+  nickname: string,
+  runnerToken: string
 ): Promise<void> {
-  await fetch("/api/user/nickname", {
+  await fetch(`${API_BASE}/api/user/nickname`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Runner-Token": runnerToken,
+    },
     body: JSON.stringify({ userId, nickname }),
   });
 }
+

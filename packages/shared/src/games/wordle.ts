@@ -168,10 +168,25 @@ export class WordleGameEngine
       return { valid: false, reason: "Exceeded maximum allowed 6 guesses" };
     }
 
+    // Human-speed sanity checks. Even a lucky one-guess solve requires reading
+    // the prompt and typing five letters.
+    if (claimedTimeMs < 500) {
+      return {
+        valid: false,
+        reason: "Time exceeds physical human cognitive speed limits (< 500ms)",
+      };
+    }
+    if (inputs.length > 1 && claimedTimeMs < inputs.length * 200) {
+      return {
+        valid: false,
+        reason: "Guess cadence is too fast to be human",
+      };
+    }
+
     // Verify timestamp monotonicity
     for (let i = 0; i < inputs.length; i++) {
       const inp = inputs[i];
-      if (typeof inp.t !== "number" || inp.t < 0) {
+      if (!inp || typeof inp.t !== "number" || !Number.isFinite(inp.t) || inp.t < 0) {
         return { valid: false, reason: `Invalid timestamp at guess ${i + 1}` };
       }
       if (i > 0 && inp.t < inputs[i - 1].t) {

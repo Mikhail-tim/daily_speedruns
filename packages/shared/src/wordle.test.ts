@@ -64,6 +64,25 @@ describe("Wordle Game Engine & Replay Verification", () => {
     assert.match(result.reason || "", /Word not in dictionary/);
   });
 
+  it("rejects an inhuman one-guess solve", () => {
+    const state = engine.init(seed);
+    const inputs = [{ t: 1, action: state.targetWord }];
+    const result = engine.verify(seed, inputs, 1);
+    assert.equal(result.valid, false);
+    assert.match(result.reason || "", /human cognitive speed limits/);
+  });
+
+  it("rejects a bot-speed multi-guess run", () => {
+    const state = engine.init(seed);
+    const inputs = [
+      { t: 100, action: "CRANE" },
+      { t: 200, action: state.targetWord },
+    ];
+    const result = engine.verify(seed, inputs, 200);
+    assert.equal(result.valid, false);
+    assert.match(result.reason || "", /human cognitive speed limits/);
+  });
+
   it("rejects when secret word was not solved", () => {
     const state = engine.init(seed);
     const wrongWord = state.targetWord === "CRANE" ? "GHOST" : "CRANE";

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { getGameEngine } from "@daily-speedruns/shared";
+import { getGameEngine, TimestampedInput } from "@daily-speedruns/shared";
 import { Env } from "./types.js";
 import {
   getLeaderboard,
@@ -10,8 +10,82 @@ import {
   saveRun,
   upsertUser,
 } from "./db.js";
+import {
+  RUNNER_TOKEN_HEADER,
+  hashRunnerToken,
+  isValidRunnerToken,
+} from "./auth.js";
 
 const app = new Hono<{ Bindings: Env }>();
+
+const MAX_RUN_BODY_BYTES = 256 * 1024;
+const MAX_INPUTS = 5000;
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function isValidDateString(value: string): boolean {
+  if (!DATE_PATTERN.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return (
+    !Number.isNaN(parsed.getTime()) &&
+    parsed.toISOString().slice(0, 10) === value
+  );
+}
+
+function isFutureDate(value: string): boolean {
+  return value > getTodayDateString();
+}
+
+function validateGame(gameId: string): string | null {
+  if (!gameId || typeof gameId !== "string") {
+    return "Missing or invalid gameId";
+  }
+  if (!getGameEngine(gameId)) {
+    return `Unsupported game: ${gameId}`;
+  }
+  return null;
+}
+
+function validateRunInputs(inputs: unknown): string | null {
+  if (!Array.isArray(inputs)) return "Inputs must be an array";
+  if (inputs.length === 0) return "No inputs submitted";
+  if (inputs.length > MAX_INPUTS) return "Too many inputs";
+
+  for (const entry of inputs) {
+    if (!entry || typeof entry !== "object") {
+      return "Invalid input entry";
+    }
+    const input = entry as Partial<TimestampedInput>;
+    if (
+      typeof input.t !== "number" ||
+      !Number.isFinite(input.t) ||
+      input.t < 0
+    ) {
+      return "Invalid input timestamp";
+    }
+    if (input.action === undefined || input.action === null) {
+      return "Missing input action";
+    }
+  }
+
+  return null;
+}
+
+async function authorizeRunner(
+  db: D1Database,
+  userId: string,
+  token: string,
+  nickname?: string
+): Promise<{ ok: boolean; error?: string }> {
+  if (!isValidRunnerToken(token)) {
+    return { ok: false, error: "Missing or invalid runner token" };
+  }
+
+  const tokenHash = await hashRunnerToken(token);
+  const ok = await upsertUser(db, userId, tokenHash, nickname);
+  return ok
+    ? { ok: true }
+    : { ok: false, error: "Runner token does not match this identity" };
+}
 
 // Enable CORS for development & Pages frontend
 app.use(
@@ -19,7 +93,7 @@ app.use(
   cors({
     origin: "*",
     allowMethods: ["GET", "POST", "OPTIONS"],
-    allowHeaders: ["Content-Type", "Authorization"],
+    allowHeaders: ["Content-Type", "Authorization", RUNNER_TOKEN_HEADER],
   })
 );
 
@@ -33,6 +107,19 @@ app.get("/api/health", (c) => c.json({ status: "ok", time: new Date().toISOStrin
 app.get("/api/challenge/today", async (c) => {
   const dateParam = c.req.query("date") || getTodayDateString();
   const gameParam = c.req.query("game") || "snake";
+
+  const gameError = validateGame(gameParam);
+  if (gameError) {
+    return c.json({ error: gameError }, 400);
+  }
+
+  if (!isValidDateString(dateParam)) {
+    return c.json({ error: "Invalid date (expected YYYY-MM-DD)" }, 400);
+  }
+
+  if (isFutureDate(dateParam)) {
+    return c.json({ error: "Future challenges are not available" }, 400);
+  }
 
   const challenge = await getOrCreateDailyChallenge(c.env.DB, dateParam, gameParam);
   const engine = getGameEngine(challenge.gameId);
@@ -55,9 +142,23 @@ app.get("/api/challenge/today", async (c) => {
 app.get("/api/leaderboard", async (c) => {
   const dateParam = c.req.query("date") || getTodayDateString();
   const gameParam = c.req.query("game") || "snake";
-  const userId = c.req.query("userId");
+  const rawUserId = c.req.query("userId");
+  const userId = rawUserId && rawUserId.length <= 100 ? rawUserId : null;
 
-  const leaderboard = await getLeaderboard(c.env.DB, dateParam, gameParam);
+  const gameError = validateGame(gameParam);
+  if (gameError) {
+    return c.json({ error: gameError }, 400);
+  }
+
+  if (!isValidDateString(dateParam)) {
+    return c.json({ error: "Invalid date (expected YYYY-MM-DD)" }, 400);
+  }
+
+  if (isFutureDate(dateParam)) {
+    return c.json({ error: "Future leaderboards are not available" }, 400);
+  }
+
+  const leaderboard = await getLeaderboard(c.env.DB, dateParam, gameParam, userId);
 
   let userBest: number | null = null;
   if (userId) {
@@ -78,44 +179,85 @@ app.get("/api/leaderboard", async (c) => {
  * Only verified runs are stored.
  */
 app.post("/api/runs", async (c) => {
-  const body = await c.req.json().catch(() => null);
+  const rawBody = await c.req.text();
 
-  if (!body) {
+  if (rawBody.length > MAX_RUN_BODY_BYTES) {
+    return c.json({ error: "Payload too large" }, 413);
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = JSON.parse(rawBody);
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
     return c.json({ error: "Invalid JSON body" }, 400);
   }
 
   const { userId, nickname, date, gameId, timeMs, inputs } = body;
 
-  if (!userId || typeof userId !== "string") {
+  if (!userId || typeof userId !== "string" || userId.length > 100) {
     return c.json({ error: "Missing or invalid userId" }, 400);
   }
 
-  if (!date || typeof date !== "string") {
+  if (!date || typeof date !== "string" || !isValidDateString(date)) {
     return c.json({ error: "Missing or invalid date" }, 400);
   }
 
-  if (!gameId || typeof gameId !== "string") {
-    return c.json({ error: "Missing or invalid gameId" }, 400);
+  if (date !== getTodayDateString()) {
+    return c.json(
+      { error: "Runs can only be submitted for today's challenge" },
+      400
+    );
   }
 
-  if (typeof timeMs !== "number" || timeMs <= 0) {
+  const gameError = validateGame(gameId as string);
+  if (gameError) {
+    return c.json({ error: gameError }, 400);
+  }
+
+  if (typeof timeMs !== "number" || !Number.isFinite(timeMs) || timeMs <= 0) {
     return c.json({ error: "Invalid claimed time" }, 400);
   }
 
-  if (!Array.isArray(inputs)) {
-    return c.json({ error: "Inputs must be an array" }, 400);
+  if (nickname !== undefined && typeof nickname !== "string") {
+    return c.json({ error: "Missing or invalid nickname" }, 400);
+  }
+
+  const inputsError = validateRunInputs(inputs);
+  if (inputsError) {
+    return c.json({ error: inputsError }, 400);
+  }
+
+  // Writes require the runner's local capability token. This is not a full
+  // account system, but it prevents one runner from writing as another.
+  const auth = await authorizeRunner(
+    c.env.DB,
+    userId,
+    c.req.header(RUNNER_TOKEN_HEADER) ?? "",
+    typeof nickname === "string" ? nickname : undefined
+  );
+  if (!auth.ok) {
+    return c.json({ error: auth.error }, 401);
   }
 
   // Retrieve challenge to get authoritative seed for that game
-  const challenge = await getOrCreateDailyChallenge(c.env.DB, date, gameId);
+  const challenge = await getOrCreateDailyChallenge(
+    c.env.DB,
+    date,
+    gameId as string
+  );
 
-  const engine = getGameEngine(challenge.gameId);
-  if (!engine) {
-    return c.json({ error: `Unsupported game: ${challenge.gameId}` }, 400);
-  }
+  const engine = getGameEngine(challenge.gameId)!;
 
   // --- REPLAY & ANTI-CHEAT VERIFICATION ---
-  const verification = engine.verify(challenge.seed, inputs, timeMs);
+  const verification = engine.verify(
+    challenge.seed,
+    inputs as TimestampedInput<unknown>[],
+    timeMs
+  );
 
   if (!verification.valid) {
     return c.json(
@@ -131,24 +273,27 @@ app.post("/api/runs", async (c) => {
   // Official verified time from deterministic simulation
   const officialTimeMs = verification.verifiedTimeMs ?? timeMs;
 
-  // Persist user nickname if supplied
-  await upsertUser(c.env.DB, userId, nickname);
-
   // Store the verified run
   const runId = crypto.randomUUID();
   await saveRun(c.env.DB, {
     id: runId,
     userId,
     date,
-    gameId,
+    gameId: gameId as string,
     timeMs: officialTimeMs,
     inputs: JSON.stringify(inputs),
     verified: true,
   });
 
   // Fetch updated user rank and best time for this game
-  const updatedLeaderboard = await getLeaderboard(c.env.DB, date, gameId);
-  const userRank = updatedLeaderboard.findIndex((r) => r.userId === userId) + 1;
+  const updatedLeaderboard = await getLeaderboard(
+    c.env.DB,
+    date,
+    gameId as string,
+    userId
+  );
+  const userRank =
+    updatedLeaderboard.findIndex((entry) => entry.isCurrentUser) + 1;
 
   return c.json({
     verified: true,
@@ -165,12 +310,32 @@ app.post("/api/runs", async (c) => {
  */
 app.post("/api/user/nickname", async (c) => {
   const body = await c.req.json().catch(() => null);
-  if (!body || !body.userId || typeof body.nickname !== "string") {
+  if (
+    !body ||
+    typeof body.userId !== "string" ||
+    body.userId.length === 0 ||
+    body.userId.length > 100 ||
+    typeof body.nickname !== "string"
+  ) {
     return c.json({ error: "Invalid request" }, 400);
   }
 
-  await upsertUser(c.env.DB, body.userId, body.nickname);
-  return c.json({ success: true, nickname: body.nickname.trim().slice(0, 30) });
+  const nickname = body.nickname.trim().slice(0, 30);
+  if (!nickname) {
+    return c.json({ error: "Nickname cannot be empty" }, 400);
+  }
+
+  const auth = await authorizeRunner(
+    c.env.DB,
+    body.userId,
+    c.req.header(RUNNER_TOKEN_HEADER) ?? "",
+    nickname
+  );
+  if (!auth.ok) {
+    return c.json({ error: auth.error }, 401);
+  }
+
+  return c.json({ success: true, nickname });
 });
 
 export default {
@@ -187,6 +352,8 @@ export default {
         getOrCreateDailyChallenge(env.DB, today, "wordle"),
         getOrCreateDailyChallenge(env.DB, today, "typing"),
         getOrCreateDailyChallenge(env.DB, today, "game2048"),
+        getOrCreateDailyChallenge(env.DB, today, "math"),
+        getOrCreateDailyChallenge(env.DB, today, "captcha"),
       ])
     );
   },

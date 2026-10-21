@@ -7,6 +7,11 @@ import {
   TimestampedInput,
 } from "@daily-speedruns/shared";
 import { formatTimeMs } from "../lib/storage.js";
+import { isGameInputLocked } from "../lib/keyboard.js";
+import { useGameSession } from "../hooks/useGameSession.js";
+import { GameShell } from "./GameShell.js";
+import { GameHud } from "./GameHud.js";
+import { ResultOverlay } from "./ResultOverlay.js";
 
 interface Game2048Props {
   seed: string;
@@ -22,8 +27,6 @@ interface Game2048Props {
   }>;
 }
 
-type GameStatus = "IDLE" | "PLAYING" | "WON" | "LOST" | "SUBMITTING";
-
 export const Game2048: React.FC<Game2048Props> = ({
   seed,
   isFocusMode,
@@ -32,138 +35,101 @@ export const Game2048: React.FC<Game2048Props> = ({
 }) => {
   const engineRef = useRef(new Game2048Engine());
 
-  const [state, setState] = useState<Game2048State>(() => engineRef.current.init(seed));
-  const [status, setStatus] = useState<GameStatus>("IDLE");
-  const [elapsedMs, setElapsedMs] = useState<number>(0);
-  const [resultMessage, setResultMessage] = useState<string>("");
-  const [lastVerifiedRank, setLastVerifiedRank] = useState<number | null>(null);
+  const [state, setState] = useState<Game2048State>(() =>
+    engineRef.current.init(seed)
+  );
+  const stateRef = useRef<Game2048State>(state);
+  const commitState = useCallback((next: Game2048State) => {
+    stateRef.current = next;
+    setState(next);
+  }, []);
 
-  const startTimeRef = useRef<number>(0);
-  const inputsRef = useRef<TimestampedInput<MoveDirection>[]>([]);
-  const statusRef = useRef<GameStatus>("IDLE");
-  statusRef.current = status;
-
-  // Touch swipe tracking
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
-  // Reset or start fresh run
+  const {
+    status,
+    statusRef,
+    elapsedMs,
+    resultMessage,
+    rank,
+    begin,
+    record,
+    submit,
+    fail,
+    reset: resetSession,
+  } = useGameSession<MoveDirection>({
+    onRunFinished,
+    winMessage: "512 reached!",
+    onWin: () => {
+      confetti({
+        particleCount: 85,
+        spread: 75,
+        origin: { y: 0.6 },
+        colors: ["#eab308", "#f59e0b", "#10b981"],
+      });
+    },
+  });
+
   const resetGame = useCallback(() => {
     const fresh = engineRef.current.init(seed);
+    stateRef.current = fresh;
     setState(fresh);
-    setStatus("IDLE");
-    setElapsedMs(0);
-    setResultMessage("");
-    setLastVerifiedRank(null);
-    startTimeRef.current = 0;
-    inputsRef.current = [];
-  }, [seed]);
+    resetSession();
+  }, [seed, resetSession]);
 
   useEffect(() => {
     resetGame();
   }, [resetGame]);
 
-  // Live stopwatch loop
-  useEffect(() => {
-    if (status !== "PLAYING") return;
-
-    let animId: number;
-    const updateTimer = () => {
-      if (statusRef.current === "PLAYING") {
-        setElapsedMs(Math.round(performance.now() - startTimeRef.current));
-        animId = requestAnimationFrame(updateTimer);
-      }
-    };
-
-    animId = requestAnimationFrame(updateTimer);
-    return () => cancelAnimationFrame(animId);
-  }, [status]);
-
-  // Execute directional move
   const handleMove = useCallback(
     (direction: MoveDirection) => {
-      if (statusRef.current === "WON" || statusRef.current === "LOST" || statusRef.current === "SUBMITTING") {
+      const currentStatus = statusRef.current;
+      if (
+        currentStatus === "WON" ||
+        currentStatus === "LOST" ||
+        currentStatus === "SUBMITTING"
+      ) {
         return;
       }
 
-      // Start run on first move
-      if (statusRef.current === "IDLE") {
-        startTimeRef.current = performance.now();
-        setStatus("PLAYING");
-      }
+      const stepRes = engineRef.current.step(stateRef.current, direction);
+      if (!stepRes.changed) return;
 
-      const timeElapsed = Math.round(performance.now() - startTimeRef.current);
-      const stepRes = engineRef.current.step(state, direction);
-
-      // Only record and update if the board actually moved
-      if (!stepRes.changed) {
-        return;
-      }
-
-      inputsRef.current.push({
-        t: Math.max(0, timeElapsed),
-        action: direction,
-      });
-
-      setState(stepRes.state);
+      const t = Math.max(1, begin());
+      record(direction, t);
+      commitState(stepRes.state);
 
       if (stepRes.win) {
-        setStatus("SUBMITTING");
-        const claimedTime = timeElapsed;
-        setElapsedMs(claimedTime);
-
-        confetti({
-          particleCount: 85,
-          spread: 75,
-          origin: { y: 0.6 },
-          colors: ["#eab308", "#f59e0b", "#10b981"],
-        });
-
-        onRunFinished(claimedTime, [...inputsRef.current])
-          .then((res) => {
-            if (res.verified) {
-              setStatus("WON");
-              setLastVerifiedRank(res.rank ?? null);
-              setResultMessage(
-                res.rank
-                  ? `Verified! You claimed rank #${res.rank}!`
-                  : "Run Verified!"
-              );
-            } else {
-              setStatus("LOST");
-              setResultMessage(res.error || "Anti-cheat rejected run");
-            }
-          })
-          .catch((err) => {
-            setStatus("LOST");
-            setResultMessage(err.message || "Network error");
-          });
+        submit(t);
         return;
       }
 
       if (stepRes.gameOver) {
-        setStatus("LOST");
-        setResultMessage(`No moves left! Max tile: ${stepRes.state.maxTile}`);
+        fail(`No moves left! Max tile: ${stepRes.state.maxTile}`);
       }
     },
-    [state, onRunFinished]
+    [begin, record, commitState, submit, fail, statusRef]
   );
 
-  // Keyboard controls listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
+      if (isGameInputLocked()) return;
+
+      if (
+        ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(
+          e.code
+        )
+      ) {
         e.preventDefault();
       }
 
-      // Single button restart on Space / Enter when game is over
-      if (e.code === "Space" || e.code === "Enter" || e.code === "KeyR") {
-        if (statusRef.current === "WON" || statusRef.current === "LOST") {
+      if (statusRef.current === "WON" || statusRef.current === "LOST") {
+        if (e.code === "Space" || e.code === "Enter" || e.code === "KeyR") {
           resetGame();
           return;
         }
       }
 
-      // Toggle focus mode
       if (e.code === "KeyF" && !(e.target instanceof HTMLInputElement)) {
         onToggleFocus();
         return;
@@ -191,9 +157,8 @@ export const Game2048: React.FC<Game2048Props> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleMove, resetGame, onToggleFocus]);
+  }, [handleMove, resetGame, onToggleFocus, statusRef]);
 
-  // Touch Swipe handlers
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length === 1) {
       touchStartRef.current = {
@@ -211,7 +176,10 @@ export const Game2048: React.FC<Game2048Props> = ({
     touchStartRef.current = null;
 
     const minSwipeDistance = 30;
-    if (Math.abs(deltaX) < minSwipeDistance && Math.abs(deltaY) < minSwipeDistance) {
+    if (
+      Math.abs(deltaX) < minSwipeDistance &&
+      Math.abs(deltaY) < minSwipeDistance
+    ) {
       return;
     }
 
@@ -223,37 +191,38 @@ export const Game2048: React.FC<Game2048Props> = ({
   };
 
   return (
-    <div
-      className="game-card game2048-card"
+    <GameShell
+      className="game2048-card"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      {/* 2048 HUD Bar */}
-      <div className="game-hud">
-        <div className="hud-stat">
-          <span className="hud-label">Max Tile</span>
-          <span className="hud-value highlight">
-            {state.maxTile} / {state.targetTile}
-          </span>
-        </div>
+      <GameHud
+        stats={[
+          {
+            label: "Max Tile",
+            value: `${state.maxTile} / ${state.targetTile}`,
+            tone: "highlight",
+          },
+          {
+            label: "Score",
+            value: state.score.toLocaleString(),
+            align: "center",
+          },
+          {
+            label: "Stopwatch",
+            value: formatTimeMs(elapsedMs),
+            align: "right",
+            tone: "timer",
+          },
+        ]}
+      />
 
-        <div className="hud-stat" style={{ textAlign: "center" }}>
-          <span className="hud-label">Score</span>
-          <span className="hud-value">{state.score.toLocaleString()}</span>
-        </div>
-
-        <div className="hud-stat" style={{ textAlign: "right" }}>
-          <span className="hud-label">Stopwatch</span>
-          <span className="hud-value timer">{formatTimeMs(elapsedMs)}</span>
-        </div>
-      </div>
-
-      {/* 4x4 Grid Board */}
       <div className="game2048-board-wrapper">
         <div className="game2048-grid">
           {state.grid.map((row, rIdx) =>
             row.map((cellValue, cIdx) => {
-              const tileClass = cellValue > 0 ? `tile-${cellValue}` : "tile-empty";
+              const tileClass =
+                cellValue > 0 ? `tile-${cellValue}` : "tile-empty";
               return (
                 <div key={`${rIdx}-${cIdx}`} className="game2048-cell">
                   {cellValue > 0 && (
@@ -267,76 +236,36 @@ export const Game2048: React.FC<Game2048Props> = ({
           )}
         </div>
 
-        {/* Overlays on Win / Loss */}
         {status === "WON" && (
-          <div className="canvas-overlay" style={{ borderRadius: "var(--radius-lg)" }}>
-            <h3 className="overlay-title win">512 Reached!</h3>
-            <div
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: "30px",
-                color: "var(--accent-sky)",
-                fontWeight: 700,
-              }}
-            >
-              {formatTimeMs(elapsedMs)}
-            </div>
-
-            <div style={{ display: "flex", gap: "16px", margin: "4px 0" }}>
-              <div style={{ textAlign: "center" }}>
-                <span style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-tertiary)", fontWeight: 700 }}>
-                  Moves
-                </span>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: "18px", fontWeight: 700, color: "var(--text-primary)" }}>
-                  {state.moveCount}
-                </div>
-              </div>
-
-              <div style={{ textAlign: "center" }}>
-                <span style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-tertiary)", fontWeight: 700 }}>
-                  Final Score
-                </span>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: "18px", fontWeight: 700, color: "var(--accent-emerald)" }}>
-                  {state.score}
-                </div>
-              </div>
-            </div>
-
-            {lastVerifiedRank && (
-              <div
-                style={{
-                  padding: "3px 12px",
-                  borderRadius: "999px",
-                  background: "var(--accent-amber-light)",
-                  border: "1px solid #fde68a",
-                  color: "var(--accent-amber)",
-                  fontWeight: 700,
-                  fontSize: "13px",
-                }}
-              >
-                🏆 #{lastVerifiedRank} on Today's Leaderboard
-              </div>
-            )}
-
-            <p className="overlay-subtitle">{resultMessage}</p>
-            <button className="btn-primary" onClick={resetGame}>
-              ⚡ Beat Your Record (<kbd style={{ fontFamily: "var(--font-mono)", fontSize: "11px" }}>Space</kbd>)
-            </button>
-          </div>
+          <ResultOverlay
+            variant="win"
+            title="512 Reached!"
+            timeMs={elapsedMs}
+            stats={[
+              { label: "Moves", value: state.moveCount },
+              {
+                label: "Final Score",
+                value: state.score,
+                tone: "success",
+              },
+            ]}
+            rank={rank}
+            message={resultMessage}
+            onRetry={resetGame}
+          />
         )}
 
         {status === "LOST" && (
-          <div className="canvas-overlay" style={{ borderRadius: "var(--radius-lg)" }}>
-            <h3 className="overlay-title gameover">Game Over</h3>
-            <p className="overlay-subtitle">{resultMessage}</p>
-            <button className="btn-primary" onClick={resetGame}>
-              🔄 Try Again (<kbd style={{ fontFamily: "var(--font-mono)", fontSize: "11px" }}>Space</kbd>)
-            </button>
-          </div>
+          <ResultOverlay
+            variant="lost"
+            title="Game Over"
+            message={resultMessage}
+            onRetry={resetGame}
+            retryLabel="Try Again"
+          />
         )}
       </div>
 
-      {/* Mobile Touch / Mouse Controls */}
       <div className="mobile-controls" aria-label="Directional controls">
         <button
           className="ctrl-btn up"
@@ -368,7 +297,6 @@ export const Game2048: React.FC<Game2048Props> = ({
         </button>
       </div>
 
-      {/* Focus & Shortcuts Bar */}
       <div className="controls-bar" style={{ marginTop: "4px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span>Swipe,</span>
@@ -383,10 +311,12 @@ export const Game2048: React.FC<Game2048Props> = ({
           onClick={onToggleFocus}
           title="Focus / Pop-up mode"
         >
-          <span>{isFocusMode ? "✕ Exit Focus" : "🎯 Focus Mode"}</span>
-          <span className="keycap" style={{ fontSize: "10px" }}>F</span>
+          <span>{isFocusMode ? "Exit Focus" : "Focus Mode"}</span>
+          <span className="keycap" style={{ fontSize: "10px" }}>
+            F
+          </span>
         </button>
       </div>
-    </div>
+    </GameShell>
   );
 };
