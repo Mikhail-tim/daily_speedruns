@@ -117,6 +117,10 @@ export async function upsertUser(
 
 /**
  * Saves a completed run into the database.
+ *
+ * Games with a deterministic engine land here already verified. Doom lands here
+ * as `pending` with its demo recording attached, and is promoted later through
+ * the review script.
  */
 export async function saveRun(
   db: D1Database,
@@ -128,13 +132,24 @@ export async function saveRun(
     timeMs: number;
     inputs: string;
     verified: boolean;
+    reviewStatus?: "verified" | "pending" | "rejected";
+    proof?: {
+      kind: string;
+      data: string;
+      sha256: string;
+      tics: number;
+    };
   }
 ): Promise<void> {
   const now = Date.now();
+  const reviewStatus = run.reviewStatus ?? (run.verified ? "verified" : "pending");
   await db
     .prepare(`
-      INSERT INTO runs (id, user_id, date, game_id, time_ms, inputs, verified, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO runs (
+        id, user_id, date, game_id, time_ms, inputs, verified, created_at,
+        review_status, proof_kind, proof_data, proof_sha256, proof_tics
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     .bind(
       run.id,
@@ -144,9 +159,48 @@ export async function saveRun(
       run.timeMs,
       run.inputs,
       run.verified ? 1 : 0,
-      now
+      now,
+      reviewStatus,
+      run.proof?.kind ?? null,
+      run.proof?.data ?? null,
+      run.proof?.sha256 ?? null,
+      run.proof?.tics ?? null
     )
     .run();
+}
+
+export interface PendingRun {
+  id: string;
+  date: string;
+  gameId: string;
+  timeMs: number;
+  reviewStatus: string;
+  createdAt: number;
+}
+
+/**
+ * The requesting runner's most recent run that is still waiting for review, so
+ * the UI can show "pending" instead of pretending the run does not exist.
+ */
+export async function getPendingRun(
+  db: D1Database,
+  userId: string,
+  dateStr: string,
+  gameId: string
+): Promise<PendingRun | null> {
+  const row = await db
+    .prepare(`
+      SELECT id, date, game_id AS gameId, time_ms AS timeMs,
+             review_status AS reviewStatus, created_at AS createdAt
+      FROM runs
+      WHERE user_id = ? AND date = ? AND game_id = ? AND review_status = 'pending'
+      ORDER BY time_ms ASC, created_at ASC
+      LIMIT 1
+    `)
+    .bind(userId, dateStr, gameId)
+    .first<PendingRun>();
+
+  return row ?? null;
 }
 
 /**

@@ -3213,6 +3213,12 @@ body {
   border-top: 1px solid var(--arena-line);
 }
 
+/* The anchor is the positioning context for the popover, so the list opens
+   directly above the trigger rather than above the "Test build" label. */
+.rail-events-anchor {
+  position: relative;
+}
+
 .rail-event-trigger {
   display: flex;
   justify-content: space-between;
@@ -3243,10 +3249,12 @@ body {
 .rail-events-menu {
   position: absolute;
   left: 0;
-  bottom: calc(100% + 8px);
+  right: 0;
+  bottom: 100%;
   z-index: 30;
-  width: 100%;
   border: 1px solid var(--arena-line-strong);
+  /* The trigger already draws the shared edge, so avoid a doubled hairline. */
+  border-bottom: none;
   background: var(--arena-panel);
 }
 
@@ -4057,7 +4065,7 @@ body {
 
 .arena-app.focus-active .canvas-wrapper,
 .arena-app.focus-active .game2048-board-wrapper {
-  max-width: min(100%, calc(100dvh - 340px));
+  max-width: min(100%, calc(100dvh - 280px));
 }
 
 @media (max-width: 480px) {
@@ -4137,9 +4145,14 @@ body {
     border-top: none;
   }
 
+  .rail-events-anchor {
+    position: static;
+  }
+
   .rail-events-menu {
     position: static;
     margin-top: 6px;
+    border-bottom: 1px solid var(--arena-line-strong);
   }
 
   .arena-placeholder-panel {
@@ -4159,7 +4172,172 @@ body {
   }
 }
 
+/* =========================================================
+   SCROLLBARS, RAIL BLEED, CONTROL GROUP, NATIVE FULLSCREEN
+   ========================================================= */
+html,
+body,
+.arena-app,
+.arena-app * {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
 
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+.arena-app::-webkit-scrollbar,
+.arena-app *::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
 
+.arena-rail {
+  --rail-bleed: calc((100vw - min(100vw, 1480px)) / 2 + 32px);
+}
+
+.rail-item {
+  border-bottom: none;
+}
+
+.rail-item::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--rail-bleed) * -1);
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--arena-line);
+  pointer-events: none;
+}
+
+.rail-item.active::before {
+  left: calc(var(--rail-bleed) * -1);
+}
+
+.arena-control-group {
+  display: inline-flex;
+  align-items: stretch;
+}
+
+.arena-control-group .arena-focus-btn {
+  gap: 8px;
+}
+
+.arena-control-group .arena-focus-btn + .arena-focus-btn {
+  border-left: none;
+}
+
+.game-card:fullscreen {
+  --fs-board: min(calc(100vw - 64px), calc(100dvh - 180px));
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 16px 24px;
+  gap: 12px;
+  border: none;
+  border-radius: 0;
+  background: var(--arena-bg);
+  overflow: hidden;
+}
+
+.game-card:fullscreen .game-hud,
+.game-card:fullscreen .canvas-wrapper {
+  width: var(--fs-board);
+  max-width: none;
+  flex: 0 0 auto;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.game-card:fullscreen .canvas-wrapper {
+  margin-top: auto;
+  margin-bottom: auto;
+}
+
+.game-card:fullscreen .controls-bar {
+  width: var(--fs-board);
+  flex: 0 0 auto;
+  margin: 0 auto;
+  padding: 0;
+}
+
+.game-card:fullscreen .mobile-controls {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mobile-controls {
+    display: none;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .game-card:fullscreen {
+    --fs-board: min(calc(100vw - 40px), calc(100dvh - 380px));
+    padding: 12px;
+  }
+
+  .game-card:fullscreen .controls-bar > div:first-child {
+    display: none;
+  }
+
+  .game-card:fullscreen .controls-bar {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 900px) {
+  .arena-rail {
+    --rail-bleed: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .arena-app.focus-active .captcha-card {
+    padding: 12px;
+  }
+}
+
+/* Captcha: hide the grid until the timer actually starts. */
+.recaptcha-grid {
+  position: relative;
+}
+
+.recaptcha-tile-img {
+  transition: filter 0.25s ease, transform 0.25s ease;
+}
+
+.recaptcha-grid.is-idle .recaptcha-tile-img {
+  filter: blur(12px) saturate(0.45) brightness(0.78);
+  transform: scale(1.1);
+}
+
+.recaptcha-idle-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.recaptcha-idle-overlay span {
+  padding: 8px 14px;
+  border: 1px solid var(--arena-line-strong);
+  background: rgba(11, 12, 14, 0.86);
+  color: var(--arena-text);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
 
 

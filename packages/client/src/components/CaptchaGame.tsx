@@ -240,11 +240,13 @@ export const CaptchaGame: React.FC<CaptchaGameProps> = ({
               {challenge.categoryDisplayName}
             </strong>
             <span className="recaptcha-header-sub">
-              {challenge.mode === "dynamic"
-                ? state.remainingTargets === 0
-                  ? "All matches found — click verify."
-                  : "Matches refresh when clicked. Verify once there are none left."
-                : "Select every match, then click verify."}
+              {status === "IDLE"
+                ? "Timer starts on your first pick."
+                : challenge.mode === "dynamic"
+                  ? state.remainingTargets === 0
+                    ? "All matches found — click verify."
+                    : "Matches refresh when clicked. Verify once there are none left."
+                  : "Select every match, then click verify."}
             </span>
             <span className="recaptcha-mode-pill">
               {challenge.gridSize}×{challenge.gridSize} ·{" "}
@@ -264,7 +266,11 @@ export const CaptchaGame: React.FC<CaptchaGameProps> = ({
           </div>
         </div>
 
-        <div className="recaptcha-grid" role="grid" aria-label="Captcha 3x3 image grid">
+        <div
+          className={`recaptcha-grid ${status === "IDLE" ? "is-idle" : ""}`}
+          role="grid"
+          aria-label="Captcha 3x3 image grid"
+        >
           {challenge.tiles.map((tile) => {
             const isSelected = selectedIndices.includes(tile.index);
             return (
@@ -312,6 +318,12 @@ export const CaptchaGame: React.FC<CaptchaGameProps> = ({
               </div>
             );
           })}
+
+          {status === "IDLE" && (
+            <div className="recaptcha-idle-overlay" aria-hidden="true">
+              <span>Timer starts on first pick</span>
+            </div>
+          )}
         </div>
 
         {errorMessage && (

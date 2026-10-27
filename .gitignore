@@ -19,6 +19,12 @@ build/
 .env.*
 !.env.example
 
+# Fetched Doom runtime assets (reproduced by: npm run doom:fetch -w packages/client)
+# Verified against pinned SHA-256 hashes at fetch time.
+packages/client/public/doom/chocolate-doom.js
+packages/client/public/doom/chocolate-doom.wasm
+packages/client/public/doom/DOOM1.WAD
+
 # IDE & OS
 .DS_Store
 Thumbs.db

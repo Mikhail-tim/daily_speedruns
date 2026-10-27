@@ -5,6 +5,7 @@ import { TypingGameEngine } from "./typing.js";
 import { Game2048Engine } from "./game2048.js";
 import { MathSprintEngine } from "./math.js";
 import { CaptchaEngine } from "./captcha.js";
+import { doomEvent } from "./doom.js";
 
 // Global registry of game engines
 const registry = new Map<string, GameEngine<any, any, any>>();
@@ -23,6 +24,9 @@ registry.set(typingEngine.gameId, typingEngine);
 registry.set(game2048Engine.gameId, game2048Engine);
 registry.set(mathEngine.gameId, mathEngine);
 registry.set(captchaEngine.gameId, captchaEngine);
+// Doom is metadata-only: it has no seeded simulation, so its runs are verified
+// from a recorded demo rather than by replaying inputs. See games/doom.ts.
+registry.set(doomEvent.gameId, doomEvent);
 
 export function getGameEngine(gameId: string): GameEngine<any, any, any> | undefined {
   return registry.get(gameId);

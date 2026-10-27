@@ -9,6 +9,7 @@ import {
   fetchTodayChallenge,
   submitRun,
   updateNicknameOnServer,
+  type PendingRunResponse,
 } from "./lib/api.js";
 import {
   getOrCreateRunnerToken,
@@ -24,6 +25,8 @@ import { TypingGame } from "./components/TypingGame.js";
 import { Game2048 } from "./components/Game2048.js";
 import { MathSprint } from "./components/MathSprint.js";
 import { CaptchaGame } from "./components/CaptchaGame.js";
+import { DoomGame, type DoomSubmitResult } from "./components/DoomGame.js";
+import type { DoomRunCapture } from "./doom/protocol.js";
 import { Leaderboard } from "./components/Leaderboard.js";
 import { NicknameModal } from "./components/NicknameModal.js";
 import {
@@ -32,7 +35,14 @@ import {
 } from "./components/ArenaPlaceholder.js";
 import { formatTimeMs } from "./lib/storage.js";
 
-type GameId = "captcha" | "math" | "typing" | "wordle" | "snake" | "game2048";
+type GameId =
+  | "captcha"
+  | "math"
+  | "typing"
+  | "wordle"
+  | "snake"
+  | "game2048"
+  | "doom";
 type RailView = "today" | PlaceholderView;
 
 const GAME_RAIL: Array<{
@@ -47,6 +57,7 @@ const GAME_RAIL: Array<{
   { id: "wordle", index: "04", label: "Wordle", meta: "5×6" },
   { id: "snake", index: "05", label: "Snake", meta: "L20" },
   { id: "game2048", index: "06", label: "2048", meta: "512" },
+  { id: "doom", index: "07", label: "Doom", meta: "E1M1" },
 ];
 
 const RAIL_NAV: Array<{ id: RailView; index: string; label: string }> = [
@@ -71,6 +82,7 @@ export const App: React.FC = () => {
   const [challenge, setChallenge] = useState<ChallengeResponse | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [userBestTimeMs, setUserBestTimeMs] = useState<number | null>(null);
+  const [pendingRun, setPendingRun] = useState<PendingRunResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const loadRequestId = useRef<number>(0);
@@ -108,6 +120,7 @@ export const App: React.FC = () => {
       setLoading(true);
       setLeaderboard([]);
       setUserBestTimeMs(null);
+      setPendingRun(null);
       const ch = await fetchTodayChallenge(undefined, selectedGame);
       if (requestId !== loadRequestId.current) return;
       setChallenge(ch);
@@ -116,6 +129,7 @@ export const App: React.FC = () => {
       if (requestId !== loadRequestId.current) return;
       setLeaderboard(lb.leaderboard);
       setUserBestTimeMs(lb.userBestTimeMs);
+      setPendingRun(lb.pendingRun ?? null);
       setLoadError(null);
     } catch (err: any) {
       if (requestId !== loadRequestId.current) return;
@@ -130,6 +144,12 @@ export const App: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Doom runs inside a fullscreen engine overlay, so the site's focus mode must
+  // never be left on when it is selected.
+  useEffect(() => {
+    if (selectedGame === "doom") setIsFocusMode(false);
+  }, [selectedGame]);
 
   const handleRunFinished = async (
     claimedTimeMs: number,
@@ -160,6 +180,7 @@ export const App: React.FC = () => {
         );
         setLeaderboard(updatedLb.leaderboard);
         setUserBestTimeMs(updatedLb.userBestTimeMs);
+        setPendingRun(updatedLb.pendingRun ?? null);
       }
 
       return {
@@ -173,6 +194,77 @@ export const App: React.FC = () => {
       return {
         verified: false,
         error: err.message || "Failed to submit run",
+      };
+    }
+  };
+
+  /**
+   * Doom cannot be replayed on the edge, so the run goes in as a demo artifact
+   * and comes back "pending" until a reviewer replays it.
+   */
+  const handleDoomRunFinished = async (
+    capture: DoomRunCapture
+  ): Promise<DoomSubmitResult> => {
+    if (!challenge) {
+      return { status: "error", message: "Challenge not loaded" };
+    }
+
+    try {
+      const res = await submitRun(
+        {
+          userId,
+          nickname,
+          date: challenge.date,
+          gameId: "doom",
+          timeMs: capture.timeMs,
+          inputs: [],
+          proof: {
+            kind: "doom-demo",
+            demoBase64: capture.demoBase64,
+            demoSha256: capture.demoSha256,
+            mapLabel: capture.mapLabel,
+            skill: capture.skill,
+            iwadSha256: capture.iwadSha256,
+            engineBuild: capture.engineBuild,
+          },
+        },
+        runnerToken
+      );
+
+      if (res.reviewStatus === "pending") {
+        // Pending runs are not on the board yet, but the runner should see that
+        // their demo is queued rather than an empty state.
+        const updatedLb = await fetchLeaderboard(challenge.date, userId, "doom");
+        setLeaderboard(updatedLb.leaderboard);
+        setUserBestTimeMs(updatedLb.userBestTimeMs);
+        setPendingRun(updatedLb.pendingRun ?? null);
+        return { status: "pending", message: res.reason };
+      }
+
+      if (!res.verified) {
+        return {
+          status: "error",
+          message: res.reason
+            ? `${res.error} (${res.reason})`
+            : res.error || "Submission rejected",
+        };
+      }
+
+      if (selectedGameRef.current === "doom") {
+        const updatedLb = await fetchLeaderboard(
+          challenge.date,
+          userId,
+          "doom"
+        );
+        setLeaderboard(updatedLb.leaderboard);
+        setUserBestTimeMs(updatedLb.userBestTimeMs);
+        setPendingRun(updatedLb.pendingRun ?? null);
+      }
+      return { status: "verified", rank: res.rank };
+    } catch (err: any) {
+      return {
+        status: "error",
+        message: err.message || "Failed to submit run",
       };
     }
   };
@@ -290,7 +382,11 @@ export const App: React.FC = () => {
             <div className="rail-stat-row">
               <span>Best</span>
               <strong>
-                {userBestTimeMs != null ? formatTimeMs(userBestTimeMs) : "—"}
+                {userBestTimeMs != null
+                  ? formatTimeMs(userBestTimeMs)
+                  : pendingRun
+                    ? `${formatTimeMs(pendingRun.timeMs)} · review`
+                    : "—"}
               </strong>
             </div>
             <div className="rail-stat-row">
@@ -308,12 +404,6 @@ export const App: React.FC = () => {
 
           <div
             className="rail-events"
-            onPointerEnter={(event) => {
-              if (event.pointerType === "mouse") setIsEventsOpen(true);
-            }}
-            onPointerLeave={(event) => {
-              if (event.pointerType === "mouse") setIsEventsOpen(false);
-            }}
             onBlur={(event) => {
               if (
                 !event.currentTarget.contains(event.relatedTarget as Node | null)
@@ -328,44 +418,56 @@ export const App: React.FC = () => {
             }}
           >
             <span className="rail-block-label">Test build</span>
-            <button
-              type="button"
-              className="rail-event-trigger"
-              aria-haspopup="menu"
-              aria-expanded={isEventsOpen}
-              onClick={() => setIsEventsOpen((open) => !open)}
+            {/* The trigger and its menu share a positioned wrapper so the list
+                attaches to the button instead of to the whole rail block. */}
+            <div
+              className="rail-events-anchor"
+              onPointerEnter={(event) => {
+                if (event.pointerType === "mouse") setIsEventsOpen(true);
+              }}
+              onPointerLeave={(event) => {
+                if (event.pointerType === "mouse") setIsEventsOpen(false);
+              }}
             >
-              <span>
-                {activeGame.index} / {activeGame.label}
-              </span>
-              <span className="rail-chevron">
-                {isEventsOpen ? "▴" : "▾"}
-              </span>
-            </button>
+              <button
+                type="button"
+                className="rail-event-trigger"
+                aria-haspopup="menu"
+                aria-expanded={isEventsOpen}
+                onClick={() => setIsEventsOpen((open) => !open)}
+              >
+                <span>
+                  {activeGame.index} / {activeGame.label}
+                </span>
+                <span className="rail-chevron">
+                  {isEventsOpen ? "▴" : "▾"}
+                </span>
+              </button>
 
-            {isEventsOpen && (
-              <div className="rail-events-menu" role="menu">
-                {GAME_RAIL.map((game) => (
-                  <button
-                    key={game.id}
-                    type="button"
-                    role="menuitem"
-                    className={`rail-event-item ${
-                      selectedGame === game.id ? "active" : ""
-                    }`}
-                    onClick={() => {
-                      setSelectedGame(game.id);
-                      setActiveView("today");
-                      setIsEventsOpen(false);
-                    }}
-                  >
-                    <span>{game.index}</span>
-                    <span>{game.label}</span>
-                    <span>{game.meta}</span>
-                  </button>
-                ))}
-              </div>
-            )}
+              {isEventsOpen && (
+                <div className="rail-events-menu" role="menu">
+                  {GAME_RAIL.map((game) => (
+                    <button
+                      key={game.id}
+                      type="button"
+                      role="menuitem"
+                      className={`rail-event-item ${
+                        selectedGame === game.id ? "active" : ""
+                      }`}
+                      onClick={() => {
+                        setSelectedGame(game.id);
+                        setActiveView("today");
+                        setIsEventsOpen(false);
+                      }}
+                    >
+                      <span>{game.index}</span>
+                      <span>{game.label}</span>
+                      <span>{game.meta}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="rail-foot">
@@ -391,7 +493,12 @@ export const App: React.FC = () => {
 
               {activeChallenge ? (
                 <div className="arena-game-slot">
-                  {selectedGame === "captcha" ? (
+                  {selectedGame === "doom" ? (
+                    <DoomGame
+                      key="doom-event"
+                      onRunFinished={handleDoomRunFinished}
+                    />
+                  ) : selectedGame === "captcha" ? (
                     <CaptchaGame
                       key={`captcha-${activeChallenge.seed}`}
                       seed={activeChallenge.seed}
@@ -455,14 +562,24 @@ export const App: React.FC = () => {
                 </div>
                 <div className="status-cell">
                   <span>Fair play</span>
-                  <p>Edge replay · valid runs only</p>
+                  <p>
+                    {selectedGame === "doom"
+                      ? "Demo review · pending until verified"
+                      : "Edge replay · valid runs only"}
+                  </p>
                 </div>
                 <div className="status-cell">
                   <span>Keys</span>
-                  <p>
-                    <kbd>1–9</kbd> select <kbd>Enter</kbd> verify <kbd>F</kbd>{" "}
-                    focus
-                  </p>
+                  {selectedGame === "doom" ? (
+                    <p>
+                      <kbd>F10</kbd> stop clock <kbd>Esc</kbd> menu
+                    </p>
+                  ) : (
+                    <p>
+                      <kbd>1–9</kbd> select <kbd>Enter</kbd> verify <kbd>F</kbd>{" "}
+                      focus
+                    </p>
+                  )}
                 </div>
               </div>
             </>

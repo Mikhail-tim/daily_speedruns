@@ -2,6 +2,8 @@
  * Common types for Daily Speedruns game engines, challenges, and leaderboards.
  */
 
+import type { DoomProof } from "./doom.js";
+
 export interface Challenge {
   date: string;       // YYYY-MM-DD
   gameId: string;     // e.g. "snake"
@@ -61,6 +63,11 @@ export interface RunSubmission<TAction = unknown> {
   gameId: string;
   timeMs: number;
   inputs: TimestampedInput<TAction>[];
+  /**
+   * Doom only. Games with a deterministic engine leave this undefined and are
+   * verified by replaying `inputs`.
+   */
+  proof?: DoomProof;
 }
 
 export interface LeaderboardEntry {

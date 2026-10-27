@@ -6,6 +6,8 @@
     "dev": "wrangler dev",
     "typecheck": "tsc --noEmit",
     "db:init:local": "wrangler d1 execute daily-speedruns-db --local --file=./schema.sql",
+    "db:migrate:local": "wrangler d1 execute daily-speedruns-db --local --file=./migrations/0001_doom_proof.sql",
+    "doom:review": "node scripts/review-doom-run.mjs",
     "deploy": "wrangler deploy"
   },
   "dependencies": {

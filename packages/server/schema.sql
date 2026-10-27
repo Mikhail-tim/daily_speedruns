@@ -25,9 +25,19 @@ CREATE TABLE IF NOT EXISTS runs (
     inputs TEXT NOT NULL,           -- JSON array of TimestampedInput
     verified INTEGER NOT NULL,       -- 1 = true, 0 = false
     created_at INTEGER NOT NULL,
+    -- Demo-review games (currently Doom only). Everything else is 'verified'
+    -- the moment its input replay passes.
+    review_status TEXT NOT NULL DEFAULT 'verified',
+    proof_kind TEXT,                 -- e.g. 'doom-demo'
+    proof_data TEXT,                 -- base64 demo recording
+    proof_sha256 TEXT,               -- checksum of the decoded demo
+    proof_tics INTEGER,              -- ticcmds in the recording
+    reviewed_at INTEGER,
+    review_note TEXT,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
 -- Index for fast daily leaderboard queries (best verified time first)
 CREATE INDEX IF NOT EXISTS idx_runs_daily ON runs(date, game_id, verified, time_ms ASC);
 CREATE INDEX IF NOT EXISTS idx_runs_user ON runs(user_id, date, game_id);
+CREATE INDEX IF NOT EXISTS idx_runs_review ON runs(game_id, review_status, created_at DESC);
