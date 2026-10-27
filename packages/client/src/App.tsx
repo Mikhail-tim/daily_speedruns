@@ -25,6 +25,7 @@ import { TypingGame } from "./components/TypingGame.js";
 import { Game2048 } from "./components/Game2048.js";
 import { MinesweeperGame } from "./components/MinesweeperGame.js";
 import { InvokerGame } from "./components/InvokerGame.js";
+import { FrogCross } from "./components/FrogCross.js";
 import { MathSprint } from "./components/MathSprint.js";
 import { CaptchaGame } from "./components/CaptchaGame.js";
 import { DoomGame, type DoomSubmitResult } from "./components/DoomGame.js";
@@ -46,7 +47,8 @@ type GameId =
   | "game2048"
   | "doom"
   | "minesweeper"
-  | "invoker";
+  | "invoker"
+  | "frog";
 type RailView = "today" | PlaceholderView;
 
 const GAME_RAIL: Array<{
@@ -63,7 +65,8 @@ const GAME_RAIL: Array<{
   { id: "game2048", index: "06", label: "2048", meta: "512" },
   { id: "doom", index: "07", label: "Doom", meta: "E1M1" },
   { id: "minesweeper", index: "08", label: "Minesweeper", meta: "9×9" },
-  { id: "invoker", index: "09", label: "Invoker", meta: "Combos" },
+  { id: "frog", index: "09", label: "Frog Cross", meta: "5 homes" },
+  { id: "invoker", index: "10", label: "Invoker", meta: "Combos" },
 ];
 
 const RAIL_NAV: Array<{ id: RailView; index: string; label: string }> = [
@@ -552,6 +555,14 @@ export const App: React.FC = () => {
                       onToggleFocus={() => setIsFocusMode((prev) => !prev)}
                       onRunFinished={handleRunFinished}
                     />
+                  ) : selectedGame === "minesweeper" ? (
+                    <MinesweeperGame
+                      key={`minesweeper-${activeChallenge.seed}`}
+                      seed={activeChallenge.seed}
+                      isFocusMode={isFocusMode}
+                      onToggleFocus={() => setIsFocusMode((prev) => !prev)}
+                      onRunFinished={handleRunFinished}
+                    />
                   ) : selectedGame === "invoker" ? (
                     <InvokerGame
                       key={`invoker-${activeChallenge.seed}`}
@@ -561,8 +572,8 @@ export const App: React.FC = () => {
                       onRunFinished={handleRunFinished}
                     />
                   ) : (
-                    <MinesweeperGame
-                      key={`minesweeper-${activeChallenge.seed}`}
+                    <FrogCross
+                      key={`frog-${activeChallenge.seed}`}
                       seed={activeChallenge.seed}
                       isFocusMode={isFocusMode}
                       onToggleFocus={() => setIsFocusMode((prev) => !prev)}
