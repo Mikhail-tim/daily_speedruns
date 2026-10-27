@@ -385,6 +385,77 @@ describe("Frog Cross engine", () => {
     assert.equal(engine.step(contact).event, "roadkill");
   });
 
+  it("does not kill frogs standing safely in the road when a vehicle wraps around", () => {
+    const base = engine.init(seed);
+    const state = clone(base);
+    const lane = state.roadLanes[0]; // direction: 1
+    // Place vehicle so that after one tick of advanceWorld, its x wraps around laneLength.
+    lane.vehicles = [
+      {
+        id: 999,
+        kind: "car",
+        x: lane.laneLength - 20, // next tick will be at (lane.laneLength - 20 + lane.speed) % lane.laneLength
+        length: 2,
+        speed: lane.speed,
+      },
+    ];
+
+    // Frog is standing safely at column 6 (middle of the screen, nowhere near col 0 or 12).
+    const safeFrog = place(state, 6 * FROG_CONFIG.SUB, lane.row);
+    const result = engine.step(safeFrog);
+    assert.equal(result.event, "none", "vehicle wrap should not kill distant frogs");
+    assert.equal(result.state.lives, 5);
+  });
+
+  it("correctly detects hits when a vehicle is wrapping across the board edge", () => {
+    const base = engine.init(seed);
+    const state = clone(base);
+    const lane = state.roadLanes[0]; // direction: 1
+    // Vehicle is wrapping into col 0 and 1.
+    lane.vehicles = [
+      {
+        id: 999,
+        kind: "car",
+        x: 20,
+        length: 2,
+        speed: lane.speed,
+      },
+    ];
+
+    // Frog at col 0 is in the vehicle path.
+    const hitFrog = place(state, 0, lane.row);
+    const result = engine.step(hitFrog);
+    assert.equal(result.event, "roadkill", "vehicle wrapping into col 0 should hit frog");
+
+    // Frog at col 4 is safely clear of the vehicle.
+    const clearFrog = place(state, 4 * FROG_CONFIG.SUB, lane.row);
+    const clearResult = engine.step(clearFrog);
+    assert.equal(clearResult.event, "none");
+  });
+
+  it("supports river platforms that wrap around the circular track", () => {
+    const base = engine.init(seed);
+    const state = clone(base);
+    const lane = state.riverLanes[0];
+    // Platform whose tail extends into the start of the board.
+    lane.platforms = [
+      {
+        id: 888,
+        kind: "log",
+        x: lane.laneLength - 1000,
+        length: 4,
+        speed: lane.speed,
+        phase: 0,
+        mouthCell: -1,
+      },
+    ];
+
+    // On screen with offset = -lane.laneLength, this log covers -1000 to +3000 (cols 0, 1, 2).
+    const frogOnLog = place(state, 1 * FROG_CONFIG.SUB, lane.row);
+    const result = engine.step(frogOnLog);
+    assert.equal(result.event, "none", "frog on wrapped log should not drown");
+  });
+
   it("forgives the frog at the end of a platform", () => {
     const base = engine.init(seed);
     const laneIndex = base.riverLanes.findIndex((lane) =>

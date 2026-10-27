@@ -211,23 +211,43 @@ export function getTurtlePhase(
   return "up";
 }
 
-function platformCovers(platform: Platform, x: number): boolean {
+function platformCovers(
+  platform: Platform,
+  x: number,
+  laneLength = (COLS + 6) * SUB
+): boolean {
   const center = x + SUB / 2;
   const grace = FROG_CONFIG.PLATFORM_GRACE * SUB;
-  return (
-    center >= platform.x - grace &&
-    center < platform.x + platform.length * SUB + grace
-  );
+  for (const offset of [-laneLength, 0, laneLength]) {
+    const pX = platform.x + offset;
+    if (
+      center >= pX - grace &&
+      center < pX + platform.length * SUB + grace
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
-function hitsAlligatorMouth(platform: Platform, x: number): boolean {
+function hitsAlligatorMouth(
+  platform: Platform,
+  x: number,
+  laneLength = (COLS + 6) * SUB
+): boolean {
   if (platform.kind !== "alligator" || platform.mouthCell < 0) return false;
   const center = x + SUB / 2;
   // The mouth only bites the inner part of its cell, so brushing the very
   // leading edge of the log is survivable.
   const inset = 0.18 * SUB;
-  const start = platform.x + platform.mouthCell * SUB + inset;
-  return center >= start && center < start + SUB - inset * 2;
+  for (const offset of [-laneLength, 0, laneLength]) {
+    const pX = platform.x + offset;
+    const start = pX + platform.mouthCell * SUB + inset;
+    if (center >= start && center < start + SUB - inset * 2) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function buildRoadLane(seed: string, spec: RoadSpec): RoadLane {
@@ -352,7 +372,9 @@ function findPlatform(
   lane: RiverLane,
   x: number
 ): Platform | undefined {
-  return lane.platforms.find((platform) => platformCovers(platform, x));
+  return lane.platforms.find((platform) =>
+    platformCovers(platform, x, lane.laneLength)
+  );
 }
 
 function spansOverlap(
@@ -371,40 +393,23 @@ function vehicleHitsFrog(
   frogEnd: number
 ): boolean {
   // Both boxes are trimmed so the frog only dies on real contact, not when it
-  // is merely next to a sprite.
+  // is merely next to a sprite. The lane is circular, so check wrapped vehicle
+  // instances across the board edges.
   const inset = FROG_CONFIG.VEHICLE_HIT_INSET * SUB;
-  const newStart = vehicle.x + inset;
-  const newEnd = vehicle.x + vehicle.length * SUB - inset;
-  const oldX = wrap(
-    vehicle.x - lane.direction * lane.speed,
-    lane.laneLength
-  );
-  const oldStart = wrap(oldX + inset, lane.laneLength);
-  const oldEnd = oldX + vehicle.length * SUB - inset;
-
-  const wrapped =
-    lane.direction === 1 ? oldX > vehicle.x : oldX < vehicle.x;
-
-  if (!wrapped) {
-    return spansOverlap(
-      Math.min(oldStart, newStart),
-      Math.max(oldEnd, newEnd),
-      frogStart,
-      frogEnd
-    );
+  for (const offset of [-lane.laneLength, 0, lane.laneLength]) {
+    const vX = vehicle.x + offset;
+    const oldVx = vX - lane.direction * lane.speed;
+    const prevStart = oldVx + inset;
+    const prevEnd = oldVx + vehicle.length * SUB - inset;
+    const curStart = vX + inset;
+    const curEnd = vX + vehicle.length * SUB - inset;
+    const sweptStart = Math.min(prevStart, curStart);
+    const sweptEnd = Math.max(prevEnd, curEnd);
+    if (spansOverlap(sweptStart, sweptEnd, frogStart, frogEnd)) {
+      return true;
+    }
   }
-
-  if (lane.direction === 1) {
-    return (
-      spansOverlap(oldStart, lane.laneLength, frogStart, frogEnd) ||
-      spansOverlap(0, newEnd, frogStart, frogEnd)
-    );
-  }
-
-  return (
-    spansOverlap(0, oldEnd, frogStart, frogEnd) ||
-    spansOverlap(newStart, lane.laneLength, frogStart, frogEnd)
-  );
+  return false;
 }
 
 export class FrogGameEngine
@@ -539,13 +544,13 @@ export class FrogGameEngine
           )
         : findPlatform(lane, player.x);
 
-    if (!platform || !platformCovers(platform, player.x)) {
+    if (!platform || !platformCovers(platform, player.x, lane.laneLength)) {
       return { event: "drown" };
     }
     if (getTurtlePhase(platform, state.tickCount) === "down") {
       return { event: "turtle" };
     }
-    if (hitsAlligatorMouth(platform, player.x)) {
+    if (hitsAlligatorMouth(platform, player.x, lane.laneLength)) {
       return { event: "gator" };
     }
 

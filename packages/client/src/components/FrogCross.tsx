@@ -95,8 +95,13 @@ function interpolateX(
   alpha: number
 ): number {
   if (previous === undefined) return current;
-  if (Math.abs(current - previous) > laneLength / 2) return current;
-  return lerp(previous, current, alpha);
+  let prev = previous;
+  if (current - prev > laneLength / 2) {
+    prev += laneLength;
+  } else if (current - prev < -laneLength / 2) {
+    prev -= laneLength;
+  }
+  return lerp(prev, current, alpha);
 }
 
 function drawRounded(
@@ -259,10 +264,11 @@ function drawVehicles(
         lane.laneLength,
         alpha
       );
-      const width = vehicle.length * CELL * 0.9;
+      const margin = CELL * 0.05;
+      const width = vehicle.length * CELL - margin * 2;
 
       for (const offset of [-lane.laneLength, 0, lane.laneLength]) {
-        const drawX = subX(x + offset) + CELL * 0.05;
+        const drawX = subX(x + offset) + margin;
         if (drawX > CANVAS_SIZE || drawX + width < 0) continue;
 
         ctx.save();
@@ -356,11 +362,12 @@ function drawPlatforms(
         lane.laneLength,
         alpha
       );
-      const width = platform.length * CELL * 0.94;
+      const margin = CELL * 0.03;
+      const width = platform.length * CELL - margin * 2;
       const phase = getTurtlePhase(platform, state.tickCount);
 
       for (const offset of [-lane.laneLength, 0, lane.laneLength]) {
-        const drawX = subX(x + offset) + CELL * 0.03;
+        const drawX = subX(x + offset) + margin;
         if (drawX > CANVAS_SIZE || drawX + width < 0) continue;
 
         if (platform.kind === "turtle") {
@@ -626,8 +633,6 @@ export const FrogCross: React.FC<FrogCrossProps> = ({
     toX: number;
     toY: number;
   } | null>(null);
-  /** Smoothed draw position so carry drift and landings never snap. */
-  const drawnRef = useRef<{ x: number; y: number } | null>(null);
 
   const [hud, setHud] = useState<HudState>({
     lives: initialState.lives,
@@ -685,7 +690,6 @@ export const FrogCross: React.FC<FrogCrossProps> = ({
     inputQueueRef.current = [];
     particlesRef.current = [];
     hopRef.current = null;
-    drawnRef.current = null;
     lastTickAtRef.current = performance.now();
     snapshotPrevious(fresh);
     setHud({
@@ -863,6 +867,17 @@ export const FrogCross: React.FC<FrogCrossProps> = ({
           toX: next.player.x,
           toY: next.player.y,
         };
+      } else if (
+        hopRef.current &&
+        next.player.ridingPlatformId !== null &&
+        next.player.y >= 7 &&
+        next.player.y <= 11
+      ) {
+        // Keep hop destination aligned with platform movement
+        const lane = next.riverLanes.find((l) => l.row === next.player.y);
+        if (lane) {
+          hopRef.current.toX += lane.direction * lane.speed;
+        }
       }
 
       setHud((previous) => {
@@ -912,11 +927,7 @@ export const FrogCross: React.FC<FrogCrossProps> = ({
         return;
       }
 
-      if (
-        current.respawnTicks > 0 &&
-        next.respawnTicks === 0 &&
-        next.player.y === FROG_CONFIG.MEDIAN_ROW
-      ) {
+      if (current.respawnTicks > 0 && next.respawnTicks === 0) {
         hopRef.current = null;
         previousRef.current.player = {
           x: next.player.x,
@@ -1034,28 +1045,15 @@ export const FrogCross: React.FC<FrogCrossProps> = ({
           : rowY(lerp(previous.y, state.player.y, alpha));
       }
 
-      // A light position filter removes the last sub-pixel jumps when a hop
-      // finishes on a moving log.
-      const drawn = drawnRef.current;
-      if (
-        !drawn ||
-        Math.abs(targetX - drawn.x) > CELL * 2 ||
-        Math.abs(targetY - drawn.y) > CELL * 2
-      ) {
-        drawnRef.current = { x: targetX, y: targetY };
-      } else {
-        drawn.x += (targetX - drawn.x) * 0.45;
-        drawn.y += (targetY - drawn.y) * 0.45;
-      }
-
+      const frogSize = CELL * 0.8;
+      const frogOffset = (CELL - frogSize) / 2;
       const bob = playing ? 0 : Math.sin(nowMs / 260) * CELL * 0.02;
-      const drawPoint = drawnRef.current ?? { x: targetX, y: targetY };
 
       drawFrog(
         ctx,
-        drawPoint.x,
-        drawPoint.y + bob,
-        CELL * 0.8,
+        targetX + frogOffset,
+        targetY + bob,
+        frogSize,
         state.player.facing,
         lift,
         dying
