@@ -51,6 +51,7 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
     resultMessage,
     rank,
     begin,
+    now,
     record,
     submit,
     fail,
@@ -112,6 +113,33 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
     [begin, record, commitState, submit, fail, statusRef]
   );
 
+  const handleFlag = useCallback(
+    (row: number, col: number) => {
+      const currentStatus = statusRef.current;
+      if (
+        currentStatus === "WON" ||
+        currentStatus === "LOST" ||
+        currentStatus === "SUBMITTING"
+      ) {
+        return;
+      }
+
+      const stepRes = engineRef.current.step(stateRef.current, {
+        row,
+        col,
+        type: "FLAG",
+      });
+      if (!stepRes.changed) return;
+
+      // Flags never start the clock; they are just markers.
+      const t =
+        statusRef.current === "PLAYING" ? Math.max(1, now()) : 0;
+      record({ row, col, type: "FLAG" }, t);
+      commitState(stepRes.state);
+    },
+    [now, record, commitState, statusRef]
+  );
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isGameInputLocked()) return;
@@ -144,8 +172,8 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
       <GameHud
         stats={[
           {
-            label: "Mines",
-            value: state.mineCount,
+            label: "Flags",
+            value: `${state.flagCount} / ${state.mineCount}`,
             tone: "danger",
           },
           {
@@ -193,10 +221,12 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
               (isRevealed ||
                 state.status === "LOST" ||
                 state.status === "WON");
+            const isFlagged = state.flagged[index] && !isRevealed && !showMine;
 
             let cellClass = "minesweeper-cell";
             if (isRevealed) cellClass += " revealed";
             if (showMine) cellClass += " mine";
+            if (isFlagged) cellClass += " flagged";
             if (isExploded) cellClass += " exploded";
             if (isRevealed && !isMine && adjacent > 0) {
               cellClass += ` n${adjacent}`;
@@ -205,15 +235,19 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
             let content = "";
             if (showMine) {
               content = isExploded ? "✹" : "✸";
+            } else if (isFlagged) {
+              content = "⚑";
             } else if (isRevealed && adjacent > 0) {
               content = String(adjacent);
             }
 
             const label = showMine
               ? `Mine at row ${row + 1}, column ${col + 1}`
-              : isRevealed
-                ? `Row ${row + 1}, column ${col + 1}, ${adjacent} adjacent mines`
-                : `Reveal row ${row + 1}, column ${col + 1}`;
+              : isFlagged
+                ? `Flag on row ${row + 1}, column ${col + 1}. Right-click to remove it.`
+                : isRevealed
+                  ? `Row ${row + 1}, column ${col + 1}, ${adjacent} adjacent mines`
+                  : `Reveal row ${row + 1}, column ${col + 1}. Right-click to flag.`;
 
             return (
               <button
@@ -224,6 +258,10 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
                 aria-label={label}
                 disabled={isFinished || isRevealed}
                 onClick={() => handleReveal(row, col)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  handleFlag(row, col);
+                }}
               >
                 {content}
               </button>
@@ -263,10 +301,10 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
 
       <div className="controls-bar" style={{ marginTop: "4px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span>Clear squares with</span>
-          <span className="keycap">Click</span>
-          <span>or</span>
-          <span className="keycap">Tap</span>
+          <span className="keycap">Left click</span>
+          <span>reveal</span>
+          <span className="keycap">Right click</span>
+          <span>flag</span>
         </div>
 
         <button

@@ -4250,6 +4250,12 @@ body {
   color: #be123c;
 }
 
+.minesweeper-cell.flagged {
+  border-color: #fbbf24;
+  background: #fef3c7;
+  color: #b45309;
+}
+
 .minesweeper-cell.exploded {
   background: #e11d48;
   border-color: #be123c;
@@ -4343,6 +4349,12 @@ body {
   border-color: var(--arena-signal);
   background: var(--arena-signal-soft);
   color: var(--arena-signal);
+}
+
+.arena-app .minesweeper-cell.flagged {
+  border-color: var(--arena-text);
+  background: rgba(242, 239, 232, 0.1);
+  color: var(--arena-text);
 }
 
 .arena-app .minesweeper-cell.exploded {

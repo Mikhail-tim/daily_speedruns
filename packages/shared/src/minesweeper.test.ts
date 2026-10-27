@@ -170,6 +170,82 @@ describe("Minesweeper Sprint Engine & Verification", () => {
     assert.equal(again.state.actionCount, opened.actionCount);
   });
 
+  it("toggles flags without revealing cells or placing mines", () => {
+    const first = engine.step(engine.init(seed), {
+      row: 0,
+      col: 0,
+      type: "FLAG",
+    });
+
+    assert.equal(first.changed, true);
+    assert.equal(first.state.flagged[0], true);
+    assert.equal(first.state.flagCount, 1);
+    assert.equal(first.state.revealedCount, 0);
+    assert.equal(first.state.minesPlaced, false);
+    assert.equal(first.state.status, "READY");
+    assert.equal(first.state.actionCount, 1);
+
+    const second = engine.step(first.state, {
+      row: 0,
+      col: 0,
+      type: "FLAG",
+    });
+
+    assert.equal(second.changed, true);
+    assert.equal(second.state.flagged[0], false);
+    assert.equal(second.state.flagCount, 0);
+    assert.equal(second.state.minesPlaced, false);
+  });
+
+  it("does not reveal a flagged cell", () => {
+    let state = engine.step(engine.init(seed), { row: 4, col: 4 }).state;
+    const safeIndex = state.revealed.findIndex(
+      (isRevealed, index) => !isRevealed && !state.mines[index]
+    );
+    const cell = {
+      row: Math.floor(safeIndex / state.cols),
+      col: safeIndex % state.cols,
+    };
+
+    state = engine.step(state, { ...cell, type: "FLAG" }).state;
+    const reveal = engine.step(state, { ...cell, type: "REVEAL" });
+
+    assert.equal(reveal.changed, false);
+    assert.equal(reveal.state.revealed[safeIndex], false);
+    assert.equal(reveal.state.flagged[safeIndex], true);
+  });
+
+  it("caps flags at the number of mines", () => {
+    let state = engine.step(engine.init(seed), { row: 4, col: 4 }).state;
+    const mineIndices = state.mines
+      .map((isMine, index) => (isMine ? index : -1))
+      .filter((index) => index >= 0);
+
+    for (const index of mineIndices) {
+      const result = engine.step(state, {
+        row: Math.floor(index / state.cols),
+        col: index % state.cols,
+        type: "FLAG",
+      });
+      assert.equal(result.changed, true);
+      state = result.state;
+    }
+
+    assert.equal(state.flagCount, 10);
+    const extraIndex = state.revealed.findIndex(
+      (isRevealed, index) =>
+        !isRevealed && !state.mines[index] && !state.flagged[index]
+    );
+    const extra = engine.step(state, {
+      row: Math.floor(extraIndex / state.cols),
+      col: extraIndex % state.cols,
+      type: "FLAG",
+    });
+
+    assert.equal(extra.changed, false);
+    assert.equal(extra.state.flagCount, 10);
+  });
+
   it("verifies a complete winning run", () => {
     const { inputs, timeMs } = buildWinningRun(engine, seed);
     const result = engine.verify(seed, inputs, timeMs);
@@ -179,7 +255,74 @@ describe("Minesweeper Sprint Engine & Verification", () => {
     assert.equal(result.summary?.cellsRevealed, 71);
     assert.equal(result.summary?.safeCells, 71);
     assert.equal(result.summary?.mineCount, 10);
+    assert.equal(result.summary?.flags, 0);
     assert.ok((result.summary?.actions ?? 0) > 0);
+  });
+
+  it("verifies a winning run that includes flags", () => {
+    // The flag is placed before the clock starts, then the board is cleared.
+    const probe = engine.step(engine.init(seed), { row: 4, col: 4 }).state;
+    const mineIndex = probe.mines.findIndex(Boolean);
+    const cols = probe.cols;
+
+    let state = engine.init(seed);
+    const inputs: TimestampedInput<MinesweeperInput>[] = [
+      {
+        t: 0,
+        action: {
+          row: Math.floor(mineIndex / cols),
+          col: mineIndex % cols,
+          type: "FLAG",
+        },
+      },
+    ];
+    state = engine.step(state, inputs[0].action).state;
+
+    let t = 1200;
+    inputs.push({ t, action: { row: 4, col: 4, type: "REVEAL" } });
+    let result = engine.step(state, inputs[1].action);
+    state = result.state;
+    assert.equal(result.mineHit, false);
+
+    while (!result.win) {
+      const nextIndex = state.revealed.findIndex(
+        (isRevealed, index) =>
+          !isRevealed && !state.mines[index] && !state.flagged[index]
+      );
+      assert.notEqual(nextIndex, -1, "a full board must be reachable");
+
+      t += 120;
+      const action = {
+        row: Math.floor(nextIndex / cols),
+        col: nextIndex % cols,
+        type: "REVEAL" as const,
+      };
+      inputs.push({ t, action });
+      result = engine.step(state, action);
+      state = result.state;
+      assert.equal(result.mineHit, false);
+    }
+
+    const verified = engine.verify(seed, inputs, t);
+    assert.equal(verified.valid, true);
+    assert.equal(verified.summary?.flags, 1);
+    assert.equal(verified.summary?.cellsRevealed, 71);
+  });
+
+  it("rejects unknown action types", () => {
+    const result = engine.verify(
+      seed,
+      [
+        {
+          t: 2000,
+          action: { row: 0, col: 0, type: "BOMB" as any },
+        },
+      ],
+      2000
+    );
+
+    assert.equal(result.valid, false);
+    assert.match(result.reason || "", /Unknown action/);
   });
 
   it("rejects a run that hits a mine", () => {

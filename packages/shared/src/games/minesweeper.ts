@@ -5,9 +5,13 @@ import {
   VerificationResult,
 } from "../types.js";
 
+export type MinesweeperActionType = "REVEAL" | "FLAG";
+
 export interface MinesweeperInput {
   row: number;
   col: number;
+  /** Defaults to REVEAL when omitted, so older recorded runs still replay. */
+  type?: MinesweeperActionType;
 }
 
 export type MinesweeperStatus = "READY" | "PLAYING" | "WON" | "LOST";
@@ -21,9 +25,11 @@ export interface MinesweeperState {
   mines: boolean[];
   adjacent: number[];
   revealed: boolean[];
+  flagged: boolean[];
   minesPlaced: boolean;
   firstClickIndex: number | null;
   revealedCount: number;
+  flagCount: number;
   safeTotal: number;
   actionCount: number;
   status: MinesweeperStatus;
@@ -37,6 +43,7 @@ export interface MinesweeperSummary {
   mineCount: number;
   cellsRevealed: number;
   safeCells: number;
+  flags: number;
   actions: number;
 }
 
@@ -325,9 +332,11 @@ export class MinesweeperEngine
       mines: new Array<boolean>(total).fill(false),
       adjacent: new Array<number>(total).fill(0),
       revealed: new Array<boolean>(total).fill(false),
+      flagged: new Array<boolean>(total).fill(false),
       minesPlaced: false,
       firstClickIndex: null,
       revealedCount: 0,
+      flagCount: 0,
       safeTotal: total - mineCount,
       actionCount: 0,
       status: "READY",
@@ -365,7 +374,54 @@ export class MinesweeperEngine
     }
 
     const index = indexOf(action.row, action.col, state.cols);
-    if (state.revealed[index]) {
+    const actionType = action.type ?? "REVEAL";
+
+    if (actionType === "FLAG") {
+      if (state.revealed[index]) {
+        return unchanged;
+      }
+
+      const flagged = [...state.flagged];
+      const actionCount = state.actionCount + 1;
+
+      if (flagged[index]) {
+        flagged[index] = false;
+        return {
+          state: {
+            ...state,
+            flagged,
+            flagCount: state.flagCount - 1,
+            actionCount,
+          },
+          win: false,
+          gameOver: false,
+          changed: true,
+          mineHit: false,
+          opened: [],
+        };
+      }
+
+      if (state.flagCount >= state.mineCount) {
+        return unchanged;
+      }
+
+      flagged[index] = true;
+      return {
+        state: {
+          ...state,
+          flagged,
+          flagCount: state.flagCount + 1,
+          actionCount,
+        },
+        win: false,
+        gameOver: false,
+        changed: true,
+        mineHit: false,
+        opened: [],
+      };
+    }
+
+    if (state.revealed[index] || state.flagged[index]) {
       return unchanged;
     }
 
@@ -428,7 +484,11 @@ export class MinesweeperEngine
           state.rows,
           state.cols
         )) {
-          if (!revealed[neighbour] && !mines[neighbour]) {
+          if (
+            !revealed[neighbour] &&
+            !mines[neighbour] &&
+            !state.flagged[neighbour]
+          ) {
             queue.push(neighbour);
           }
         }
@@ -501,6 +561,13 @@ export class MinesweeperEngine
       ) {
         return { valid: false, reason: `Invalid cell at click ${i + 1}` };
       }
+      if (
+        action.type !== undefined &&
+        action.type !== "REVEAL" &&
+        action.type !== "FLAG"
+      ) {
+        return { valid: false, reason: `Unknown action at click ${i + 1}` };
+      }
     }
 
     if (claimedTimeMs < MINESWEEPER_CONFIG.MIN_RUN_TIME_MS) {
@@ -552,6 +619,7 @@ export class MinesweeperEngine
             mineCount: state.mineCount,
             cellsRevealed: state.revealedCount,
             safeCells: state.safeTotal,
+            flags: state.flagCount,
             actions: state.actionCount,
           },
         };

@@ -51,8 +51,9 @@ stops when the last of the 71 safe squares is revealed.
 - Every board is generated to be solvable by logic alone. A layout that would
   force a coin-flip guess is deterministically re-rolled from the same seed, so
   the daily board is identical for everyone and has no guess walls.
-- Click or tap a covered square to reveal it. There are no flags; a number counts
-  the mines in the eight surrounding squares.
+- Left-click (or tap) a covered square to reveal it. Right-click a covered square
+  to toggle a flag; flags are optional markers, capped at 10, and never required
+  to finish. A number counts the mines in the eight surrounding squares.
 - Detonating a mine ends the run. A clean board is replayed against the seed by
   the server, with minimum-time and click-rate caps, before it reaches the
   leaderboard.
