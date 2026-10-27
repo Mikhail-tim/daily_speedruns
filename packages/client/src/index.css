@@ -4595,13 +4595,13 @@ body::-webkit-scrollbar,
 }
 
 /* =========================================================
-   CHICKEN CROSS (NIGHT RIVER)
+   FROG CROSS (NIGHT RIVER)
    ========================================================= */
-.chicken-card {
+.frog-card {
   max-width: 620px;
 }
 
-.chicken-board-wrapper {
+.frog-board-wrapper {
   position: relative;
   width: 100%;
   aspect-ratio: 1;
@@ -4613,18 +4613,18 @@ body::-webkit-scrollbar,
   touch-action: none;
 }
 
-.chicken-canvas {
+.frog-canvas {
   display: block;
   width: 100%;
   height: 100%;
 }
 
-.arena-app .chicken-card {
+.arena-app .frog-card {
   max-width: 620px;
   margin: 0 auto;
 }
 
-.arena-app .chicken-board-wrapper {
+.arena-app .frog-board-wrapper {
   border: 1px solid var(--arena-line);
   border-radius: 0;
   background: #05080b;
@@ -4632,7 +4632,7 @@ body::-webkit-scrollbar,
 }
 
 @media (max-width: 480px) {
-  .arena-app .chicken-card {
+  .arena-app .frog-card {
     padding: 16px;
   }
 }

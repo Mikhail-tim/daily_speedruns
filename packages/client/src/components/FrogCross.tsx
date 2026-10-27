@@ -6,10 +6,10 @@ import React, {
 } from "react";
 import confetti from "canvas-confetti";
 import {
-  CHICKEN_CONFIG,
-  ChickenDirection,
-  ChickenGameEngine,
-  ChickenState,
+  FROG_CONFIG,
+  FrogDirection,
+  FrogGameEngine,
+  FrogState,
   TimestampedInput,
   getTurtlePhase,
 } from "@daily-speedruns/shared";
@@ -20,13 +20,13 @@ import { GameShell } from "./GameShell.js";
 import { GameHud } from "./GameHud.js";
 import { ResultOverlay } from "./ResultOverlay.js";
 
-interface ChickenCrossProps {
+interface FrogCrossProps {
   seed: string;
   isFocusMode: boolean;
   onToggleFocus: () => void;
   onRunFinished: (
     claimedTimeMs: number,
-    inputs: TimestampedInput<ChickenDirection>[]
+    inputs: TimestampedInput<FrogDirection>[]
   ) => Promise<{
     verified: boolean;
     rank?: number | null;
@@ -54,8 +54,8 @@ interface Particle {
 }
 
 const CANVAS_SIZE = 676;
-const CELL = CANVAS_SIZE / CHICKEN_CONFIG.COLS;
-const SUB = CHICKEN_CONFIG.SUB;
+const CELL = CANVAS_SIZE / FROG_CONFIG.COLS;
+const SUB = FROG_CONFIG.SUB;
 
 const PALETTE = {
   ink: "#070b10",
@@ -73,7 +73,7 @@ const PALETTE = {
 };
 
 function rowY(row: number): number {
-  return (CHICKEN_CONFIG.ROWS - 1 - row) * CELL;
+  return (FROG_CONFIG.ROWS - 1 - row) * CELL;
 }
 
 function subX(x: number): number {
@@ -113,10 +113,10 @@ function drawRounded(
 
 function drawBackground(
   ctx: CanvasRenderingContext2D,
-  state: ChickenState,
+  state: FrogState,
   time: number
 ) {
-  const { COLS } = CHICKEN_CONFIG;
+  const { COLS } = FROG_CONFIG;
 
   ctx.fillStyle = PALETTE.ink;
   ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
@@ -199,7 +199,7 @@ function drawBackground(
   ctx.fillStyle = "#0e2a1b";
   for (let col = 0; col < COLS; col++) {
     if (
-      CHICKEN_CONFIG.HOME_COLS.some((homeCol) => homeCol === col)
+      FROG_CONFIG.HOME_COLS.some((homeCol) => homeCol === col)
     ) {
       continue;
     }
@@ -207,7 +207,7 @@ function drawBackground(
   }
 
   // Homes.
-  CHICKEN_CONFIG.HOME_COLS.forEach((col, index) => {
+  FROG_CONFIG.HOME_COLS.forEach((col, index) => {
     const x = col * CELL + CELL / 2;
     const y = rowY(12) + CELL / 2;
     const filled = state.homes[index];
@@ -231,7 +231,7 @@ function drawBackground(
     ctx.stroke();
 
     if (filled) {
-      drawChicken(ctx, x - CELL * 0.16, y - CELL * 0.14, CELL * 0.32, "UP", 0, false);
+      drawFrog(ctx, x - CELL * 0.16, y - CELL * 0.14, CELL * 0.32, "UP", 0, false);
     } else {
       ctx.fillStyle = "rgba(90, 220, 230, 0.55)";
       ctx.beginPath();
@@ -241,38 +241,9 @@ function drawBackground(
   });
 }
 
-function drawLilyPads(ctx: CanvasRenderingContext2D, time: number) {
-  CHICKEN_CONFIG.LILY_PADS.forEach((pad, index) => {
-    const x = pad.col * CELL + CELL / 2;
-    const y = rowY(pad.row) + CELL / 2;
-    const bob = Math.sin(time / 900 + index * 1.7) * 1.4;
-
-    ctx.save();
-    ctx.translate(x, y + bob);
-    ctx.shadowColor = "rgba(124, 227, 165, 0.55)";
-    ctx.shadowBlur = 14;
-    ctx.fillStyle = "rgba(44, 122, 74, 0.92)";
-    ctx.beginPath();
-    ctx.ellipse(0, 0, CELL * 0.3, CELL * 0.22, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    ctx.strokeStyle = "rgba(124, 227, 165, 0.5)";
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.ellipse(x, y + bob, CELL * 0.3, CELL * 0.22, 0, 0, Math.PI * 2);
-    ctx.stroke();
-
-    ctx.fillStyle = "rgba(255, 190, 220, 0.85)";
-    ctx.beginPath();
-    ctx.arc(x + 2, y + bob - 2, 2.5, 0, Math.PI * 2);
-    ctx.fill();
-  });
-}
-
 function drawVehicles(
   ctx: CanvasRenderingContext2D,
-  state: ChickenState,
+  state: FrogState,
   previous: Record<number, number>,
   alpha: number
 ) {
@@ -368,7 +339,7 @@ function drawVehicles(
 
 function drawPlatforms(
   ctx: CanvasRenderingContext2D,
-  state: ChickenState,
+  state: FrogState,
   previous: Record<number, number>,
   alpha: number,
   time: number
@@ -491,117 +462,148 @@ function drawPlatforms(
   }
 }
 
-function drawChicken(
+function drawFrog(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
   size: number,
-  facing: ChickenDirection,
-  hop: number,
+  facing: FrogDirection,
+  /** Pixels of lift above the cell (already eased). */
+  lift: number,
   dying: boolean
 ) {
-  const lift = dying ? 0 : -hop;
-  const squash = dying ? 0.55 : 1;
-  const stretch = dying ? 1.2 : 1;
+  const squash = dying ? 0.5 : 1;
+  const stretch = dying ? 1.25 : 1;
+  const dir = facing === "LEFT" ? -1 : 1;
 
   ctx.save();
-  ctx.translate(x + size / 2, y + size + lift);
+  ctx.translate(x + size / 2, y + size * 0.94);
 
-  // Shadow.
+  // Ground shadow shrinks as the frog lifts off.
   if (!dying) {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+    const shrink = 1 - Math.min(0.45, lift / (CELL * 0.9));
+    ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
     ctx.beginPath();
-    ctx.ellipse(0, 2, size * 0.42, size * 0.14, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 2, size * 0.36 * shrink, size * 0.11 * shrink, 0, 0, Math.PI * 2);
     ctx.fill();
   }
 
+  // Neon backlight halo.
+  const halo = ctx.createRadialGradient(0, -size * 0.45, 0, 0, -size * 0.45, size * 0.75);
+  halo.addColorStop(0, "rgba(110, 255, 170, 0.28)");
+  halo.addColorStop(1, "rgba(110, 255, 170, 0)");
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(0, -size * 0.45, size * 0.75, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.translate(0, -lift);
   ctx.scale(1 / stretch, squash);
-  ctx.rotate(
-    facing === "LEFT" ? -0.08 : facing === "RIGHT" ? 0.08 : 0
-  );
 
-  // Body.
-  const body = ctx.createLinearGradient(0, -size, 0, 0);
-  body.addColorStop(0, "#fff8e7");
-  body.addColorStop(1, "#d8cfb9");
-  ctx.fillStyle = body;
-  ctx.beginPath();
-  ctx.ellipse(0, -size * 0.48, size * 0.4, size * 0.44, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Wing.
-  ctx.fillStyle = "rgba(180, 160, 130, 0.55)";
-  ctx.beginPath();
-  ctx.ellipse(
-    facing === "LEFT" ? -size * 0.08 : size * 0.08,
-    -size * 0.42,
-    size * 0.2,
-    size * 0.28,
-    0.3,
-    0,
-    Math.PI * 2
-  );
-  ctx.fill();
-
-  // Comb.
-  ctx.fillStyle = "#ff4d00";
-  for (let i = 0; i < 3; i++) {
+  // Hind legs.
+  ctx.fillStyle = "#17552f";
+  for (const side of [-1, 1]) {
     ctx.beginPath();
-    ctx.arc(
-      (i - 1) * size * 0.13,
-      -size * 0.93,
-      size * 0.1,
+    ctx.ellipse(
+      side * size * 0.3,
+      -size * 0.14,
+      size * 0.16,
+      size * 0.12,
+      side * 0.5,
       0,
       Math.PI * 2
     );
     ctx.fill();
   }
 
-  // Beak.
-  const dir = facing === "LEFT" ? -1 : 1;
-  ctx.fillStyle = "#f4a53c";
+  // Body: dark green with a neon rim.
+  const body = ctx.createLinearGradient(0, -size * 0.9, 0, 0);
+  body.addColorStop(0, "#338a4e");
+  body.addColorStop(0.55, "#1f6b3a");
+  body.addColorStop(1, "#10381f");
+  ctx.save();
+  ctx.shadowColor = "rgba(120, 255, 175, 0.9)";
+  ctx.shadowBlur = 14;
+  ctx.fillStyle = body;
   ctx.beginPath();
-  ctx.moveTo(dir * size * 0.16, -size * 0.52);
-  ctx.lineTo(dir * size * 0.34, -size * 0.44);
-  ctx.lineTo(dir * size * 0.16, -size * 0.34);
-  ctx.closePath();
+  ctx.ellipse(0, -size * 0.42, size * 0.37, size * 0.33, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.strokeStyle = "rgba(126, 255, 172, 0.85)";
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.ellipse(0, -size * 0.42, size * 0.37, size * 0.33, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Lighter belly glow.
+  ctx.fillStyle = "rgba(160, 255, 195, 0.18)";
+  ctx.beginPath();
+  ctx.ellipse(0, -size * 0.3, size * 0.19, size * 0.15, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Eyes.
-  const eyeY = -size * 0.58;
-  ctx.fillStyle = dying ? "#e11d48" : "#0b0e10";
-  const eyeOffset = facing === "LEFT" ? -size * 0.12 : size * 0.12;
+  // Eye bulbs.
+  for (const side of [-1, 1]) {
+    const ex = side * size * 0.17 + dir * size * 0.03;
+    const ey = -size * 0.73;
+    ctx.fillStyle = "#2b7d46";
+    ctx.beginPath();
+    ctx.arc(ex, ey, size * 0.145, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(126, 255, 172, 0.55)";
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    ctx.fillStyle = dying ? "#ff5577" : "#05130c";
+    ctx.beginPath();
+    ctx.arc(ex, ey, size * 0.085, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (!dying) {
+      ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
+      ctx.beginPath();
+      ctx.arc(ex - size * 0.03, ey - size * 0.03, size * 0.03, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Mouth.
+  ctx.strokeStyle = "rgba(9, 40, 24, 0.9)";
+  ctx.lineWidth = 1.6;
   ctx.beginPath();
-  ctx.arc(eyeOffset - size * 0.06, eyeY, size * 0.045, 0, Math.PI * 2);
-  ctx.arc(eyeOffset + size * 0.06, eyeY, size * 0.045, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.arc(dir * size * 0.02, -size * 0.4, size * 0.16, 0.35, Math.PI - 0.35);
+  ctx.stroke();
 
   if (dying) {
-    ctx.strokeStyle = "#e11d48";
+    ctx.strokeStyle = "#ff5577";
     ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(-6, eyeY - 6);
-    ctx.lineTo(6, eyeY + 6);
-    ctx.moveTo(6, eyeY - 6);
-    ctx.lineTo(-6, eyeY + 6);
-    ctx.stroke();
+    for (const side of [-1, 1]) {
+      const ex = side * size * 0.17;
+      const ey = -size * 0.73;
+      ctx.beginPath();
+      ctx.moveTo(ex - 4, ey - 4);
+      ctx.lineTo(ex + 4, ey + 4);
+      ctx.moveTo(ex + 4, ey - 4);
+      ctx.lineTo(ex - 4, ey + 4);
+      ctx.stroke();
+    }
   }
 
   ctx.restore();
 }
 
-export const ChickenCross: React.FC<ChickenCrossProps> = ({
+export const FrogCross: React.FC<FrogCrossProps> = ({
   seed,
   isFocusMode,
   onToggleFocus,
   onRunFinished,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const engineRef = useRef(new ChickenGameEngine());
-  const [initialState] = useState<ChickenState>(() =>
+  const engineRef = useRef(new FrogGameEngine());
+  const [initialState] = useState<FrogState>(() =>
     engineRef.current.init(seed)
   );
-  const stateRef = useRef<ChickenState>(initialState);
+  const stateRef = useRef<FrogState>(initialState);
   const previousRef = useRef<{
     player: { x: number; y: number };
     vehicles: Record<number, number>;
@@ -612,10 +614,20 @@ export const ChickenCross: React.FC<ChickenCrossProps> = ({
     platforms: {},
   });
   const lastTickAtRef = useRef<number>(performance.now());
-  const inputQueueRef = useRef<ChickenDirection[]>([]);
+  const inputQueueRef = useRef<FrogDirection[]>([]);
   const particlesRef = useRef<Particle[]>([]);
   const shakeAtRef = useRef<number>(0);
   const swipeRef = useRef<{ x: number; y: number } | null>(null);
+  /** Active hop animation, in sub-cell space. */
+  const hopRef = useRef<{
+    at: number;
+    fromX: number;
+    fromY: number;
+    toX: number;
+    toY: number;
+  } | null>(null);
+  /** Smoothed draw position so carry drift and landings never snap. */
+  const drawnRef = useRef<{ x: number; y: number } | null>(null);
 
   const [hud, setHud] = useState<HudState>({
     lives: initialState.lives,
@@ -636,7 +648,7 @@ export const ChickenCross: React.FC<ChickenCrossProps> = ({
     submit,
     fail,
     reset: resetSession,
-  } = useGameSession<ChickenDirection>({
+  } = useGameSession<FrogDirection>({
     onRunFinished,
     winMessage: "All five homes filled!",
     onWin: () => {
@@ -649,7 +661,7 @@ export const ChickenCross: React.FC<ChickenCrossProps> = ({
     },
   });
 
-  const snapshotPrevious = useCallback((state: ChickenState) => {
+  const snapshotPrevious = useCallback((state: FrogState) => {
     const vehicles: Record<number, number> = {};
     for (const lane of state.roadLanes) {
       for (const vehicle of lane.vehicles) vehicles[vehicle.id] = vehicle.x;
@@ -672,6 +684,8 @@ export const ChickenCross: React.FC<ChickenCrossProps> = ({
     stateRef.current = fresh;
     inputQueueRef.current = [];
     particlesRef.current = [];
+    hopRef.current = null;
+    drawnRef.current = null;
     lastTickAtRef.current = performance.now();
     snapshotPrevious(fresh);
     setHud({
@@ -688,7 +702,7 @@ export const ChickenCross: React.FC<ChickenCrossProps> = ({
   }, [resetGame]);
 
   const spawnParticles = useCallback(
-    (state: ChickenState, kind: "death" | "home") => {
+    (state: FrogState, kind: "death" | "home") => {
       const x = subX(state.player.x) + CELL / 2;
       const y = rowY(state.player.y) + CELL / 2;
       const colors =
@@ -724,7 +738,7 @@ export const ChickenCross: React.FC<ChickenCrossProps> = ({
   );
 
   const handleDirection = useCallback(
-    (direction: ChickenDirection) => {
+    (direction: FrogDirection) => {
       const currentStatus = statusRef.current;
       if (
         currentStatus === "WON" ||
@@ -822,7 +836,7 @@ export const ChickenCross: React.FC<ChickenCrossProps> = ({
       const current = stateRef.current;
       snapshotPrevious(current);
 
-      let action: ChickenDirection | undefined;
+      let action: FrogDirection | undefined;
       if (
         current.respawnTicks === 0 &&
         current.player.cooldown === 0 &&
@@ -838,6 +852,18 @@ export const ChickenCross: React.FC<ChickenCrossProps> = ({
       const next = result.state;
       stateRef.current = next;
       lastTickAtRef.current = performance.now();
+
+      // A real hop moves the frog one cell: animate the whole jump instead of
+      // snapping. Platform carry is a separate, continuous motion.
+      if (result.moved && result.event === "none") {
+        hopRef.current = {
+          at: lastTickAtRef.current,
+          fromX: current.player.x,
+          fromY: current.player.y,
+          toX: next.player.x,
+          toY: next.player.y,
+        };
+      }
 
       setHud((previous) => {
         if (
@@ -858,6 +884,7 @@ export const ChickenCross: React.FC<ChickenCrossProps> = ({
 
       if (result.event === "home") {
         inputQueueRef.current = [];
+        hopRef.current = null;
         spawnParticles(next, "home");
         previousRef.current.player = {
           x: next.player.x,
@@ -871,24 +898,26 @@ export const ChickenCross: React.FC<ChickenCrossProps> = ({
         result.event === "gator"
       ) {
         inputQueueRef.current = [];
+        hopRef.current = null;
         spawnParticles(next, "death");
         if (result.gameOver) {
-          fail("Out of lives. The chicken didn't make it.");
+          fail("Out of lives. The frog didn't make it.");
           return;
         }
       } else if (
         result.event === "timeout" ||
         result.gameOver
       ) {
-        fail("Time's up. The chicken is still on the road.");
+        fail("Time's up. The frog is still on the road.");
         return;
       }
 
       if (
         current.respawnTicks > 0 &&
         next.respawnTicks === 0 &&
-        next.player.y === CHICKEN_CONFIG.MEDIAN_ROW
+        next.player.y === FROG_CONFIG.MEDIAN_ROW
       ) {
+        hopRef.current = null;
         previousRef.current.player = {
           x: next.player.x,
           y: next.player.y,
@@ -900,7 +929,7 @@ export const ChickenCross: React.FC<ChickenCrossProps> = ({
       }
     };
 
-    const interval = window.setInterval(tick, CHICKEN_CONFIG.TICK_MS);
+    const interval = window.setInterval(tick, FROG_CONFIG.TICK_MS);
     return () => window.clearInterval(interval);
   }, [
     status,
@@ -951,7 +980,6 @@ export const ChickenCross: React.FC<ChickenCrossProps> = ({
       }
 
       drawBackground(ctx, state, nowMs);
-      drawLilyPads(ctx, nowMs);
       drawPlatforms(
         ctx,
         state,
@@ -966,37 +994,70 @@ export const ChickenCross: React.FC<ChickenCrossProps> = ({
         alpha
       );
 
+      // --- Frog position -------------------------------------------------
+      // Hops are animated from the cell the frog left to the cell it landed
+      // in; everything else (being carried on a log) is a continuous drift.
       const previous = previousRef.current.player;
-      const teleported =
-        Math.abs(state.player.x - previous.x) > SUB * 2 ||
-        Math.abs(state.player.y - previous.y) > 1;
-      const px = teleported
-        ? subX(state.player.x)
-        : subX(lerp(previous.x, state.player.x, alpha));
-      const py = teleported
-        ? rowY(state.player.y)
-        : rowY(lerp(previous.y, state.player.y, alpha));
-
-      const hopping =
-        state.player.x !== previous.x ||
-        state.player.y !== previous.y;
-      const hop =
-        hopping && statusRef.current === "PLAYING"
-          ? Math.sin(alpha * Math.PI) * CELL * 0.28
-          : 0;
-      const bob =
-        statusRef.current !== "PLAYING"
-          ? Math.sin(nowMs / 260) * CELL * 0.015
-          : 0;
+      const playing = statusRef.current === "PLAYING";
       const dying = state.respawnTicks > 0;
 
-      drawChicken(
+      let targetX: number;
+      let targetY: number;
+      let lift = 0;
+
+      const hop = hopRef.current;
+      if (hop && playing && !dying) {
+        const progress = clamp(
+          (nowMs - hop.at) / (FROG_CONFIG.HOP_TICKS * FROG_CONFIG.TICK_MS),
+          0,
+          1
+        );
+        // Ease in and out horizontally, arc vertically.
+        const eased =
+          progress < 0.5
+            ? 2 * progress * progress
+            : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+        targetX = subX(lerp(hop.fromX, hop.toX, eased));
+        targetY = rowY(lerp(hop.fromY, hop.toY, eased));
+        lift = Math.sin(Math.PI * progress) * CELL * 0.34;
+        if (progress >= 1) hopRef.current = null;
+      } else {
+        hopRef.current = null;
+        const teleported =
+          Math.abs(state.player.x - previous.x) > SUB * 2 ||
+          Math.abs(state.player.y - previous.y) > 1;
+        targetX = teleported
+          ? subX(state.player.x)
+          : subX(lerp(previous.x, state.player.x, alpha));
+        targetY = teleported
+          ? rowY(state.player.y)
+          : rowY(lerp(previous.y, state.player.y, alpha));
+      }
+
+      // A light position filter removes the last sub-pixel jumps when a hop
+      // finishes on a moving log.
+      const drawn = drawnRef.current;
+      if (
+        !drawn ||
+        Math.abs(targetX - drawn.x) > CELL * 2 ||
+        Math.abs(targetY - drawn.y) > CELL * 2
+      ) {
+        drawnRef.current = { x: targetX, y: targetY };
+      } else {
+        drawn.x += (targetX - drawn.x) * 0.45;
+        drawn.y += (targetY - drawn.y) * 0.45;
+      }
+
+      const bob = playing ? 0 : Math.sin(nowMs / 260) * CELL * 0.02;
+      const drawPoint = drawnRef.current ?? { x: targetX, y: targetY };
+
+      drawFrog(
         ctx,
-        px,
-        py + bob,
+        drawPoint.x,
+        drawPoint.y + bob,
         CELL * 0.8,
         state.player.facing,
-        hop,
+        lift,
         dying
       );
 
@@ -1076,7 +1137,7 @@ export const ChickenCross: React.FC<ChickenCrossProps> = ({
   };
 
   return (
-    <GameShell className="chicken-card">
+    <GameShell className="frog-card">
       <GameHud
         stats={[
           {
@@ -1086,7 +1147,7 @@ export const ChickenCross: React.FC<ChickenCrossProps> = ({
           },
           {
             label: "Homes",
-            value: `${hud.homes} / ${CHICKEN_CONFIG.HOME_COLS.length}`,
+            value: `${hud.homes} / ${FROG_CONFIG.HOME_COLS.length}`,
             align: "center",
             tone: "highlight",
           },
@@ -1100,7 +1161,7 @@ export const ChickenCross: React.FC<ChickenCrossProps> = ({
       />
 
       <div
-        className="chicken-board-wrapper"
+        className="frog-board-wrapper"
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
         onContextMenu={(event) => event.preventDefault()}
@@ -1109,8 +1170,8 @@ export const ChickenCross: React.FC<ChickenCrossProps> = ({
           ref={canvasRef}
           width={CANVAS_SIZE}
           height={CANVAS_SIZE}
-          className="chicken-canvas"
-          aria-label="Chicken Cross river board"
+          className="frog-canvas"
+          aria-label="Frog Cross river board"
         />
 
         {status === "IDLE" && (
@@ -1145,7 +1206,7 @@ export const ChickenCross: React.FC<ChickenCrossProps> = ({
             stats={[
               {
                 label: "Homes",
-                value: `${CHICKEN_CONFIG.HOME_COLS.length} / ${CHICKEN_CONFIG.HOME_COLS.length}`,
+                value: `${FROG_CONFIG.HOME_COLS.length} / ${FROG_CONFIG.HOME_COLS.length}`,
                 tone: "success",
               },
               {

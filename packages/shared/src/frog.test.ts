@@ -1,26 +1,29 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
-  CHICKEN_CONFIG,
-  ChickenDirection,
-  ChickenGameEngine,
-  ChickenState,
+  FROG_CONFIG,
+  FrogDirection,
+  FrogGameEngine,
+  FrogState,
+  Platform,
+  RiverLane,
+  RoadLane,
   Vehicle,
-} from "./games/chicken.js";
+} from "./games/frog.js";
 import { TimestampedInput } from "./types.js";
 
-const seed = "2026-10-27:chicken:v1";
+const seed = "2026-10-27:frog:v1";
 
-function clone(state: ChickenState): ChickenState {
-  return JSON.parse(JSON.stringify(state)) as ChickenState;
+function clone(state: FrogState): FrogState {
+  return JSON.parse(JSON.stringify(state)) as FrogState;
 }
 
 function place(
-  state: ChickenState,
+  state: FrogState,
   x: number,
   y: number,
   ridingPlatformId: number | null = null
-): ChickenState {
+): FrogState {
   const next = clone(state);
   next.player = {
     ...next.player,
@@ -33,10 +36,32 @@ function place(
   return next;
 }
 
+/**
+ * Picks a platform of the requested kind that is fully on screen and will not
+ * wrap on the next tick, so tests do not depend on where a lane happens to
+ * start.
+ */
+function pickPlatform(
+  platforms: Platform[],
+  kind: Platform["kind"]
+): Platform {
+  const boardWidth = FROG_CONFIG.COLS * FROG_CONFIG.SUB;
+  const candidates = platforms
+    .filter(
+      (platform) =>
+        platform.kind === kind &&
+        platform.x >= 2 * FROG_CONFIG.SUB &&
+        platform.x + platform.length * FROG_CONFIG.SUB <= boardWidth
+    )
+    .sort((a, b) => a.x - b.x);
+  assert.ok(candidates.length > 0, `no usable ${kind} platform`);
+  return candidates[0];
+}
+
 /** Steps with no input for a short lookahead. */
 function safeFor(
-  engine: ChickenGameEngine,
-  state: ChickenState,
+  engine: FrogGameEngine,
+  state: FrogState,
   ticks: number
 ): boolean {
   let current = state;
@@ -54,17 +79,17 @@ function safeFor(
   return true;
 }
 
-function distanceToHome(state: ChickenState): number {
-  const center = state.player.x + CHICKEN_CONFIG.SUB / 2;
+function distanceToHome(state: FrogState): number {
+  const center = state.player.x + FROG_CONFIG.SUB / 2;
   let best = Number.MAX_SAFE_INTEGER;
-  CHICKEN_CONFIG.HOME_COLS.forEach((col, index) => {
+  FROG_CONFIG.HOME_COLS.forEach((col, index) => {
     if (state.homes[index]) return;
     best = Math.min(
       best,
-      Math.abs(center - (col * CHICKEN_CONFIG.SUB + CHICKEN_CONFIG.SUB / 2))
+      Math.abs(center - (col * FROG_CONFIG.SUB + FROG_CONFIG.SUB / 2))
     );
   });
-  return best / CHICKEN_CONFIG.SUB;
+  return best / FROG_CONFIG.SUB;
 }
 
 /**
@@ -73,10 +98,10 @@ function distanceToHome(state: ChickenState): number {
  * winning input stream for the replay verifier.
  */
 function chooseAction(
-  engine: ChickenGameEngine,
-  state: ChickenState
-): ChickenDirection | undefined {
-  const directions: ChickenDirection[] = ["UP", "LEFT", "RIGHT", "DOWN"];
+  engine: FrogGameEngine,
+  state: FrogState
+): FrogDirection | undefined {
+  const directions: FrogDirection[] = ["UP", "LEFT", "RIGHT", "DOWN"];
   const candidates = directions.map((direction) => {
     const result = engine.step(state, direction);
     return { direction, result };
@@ -88,7 +113,7 @@ function chooseAction(
   );
   if (home) return home.direction;
 
-  let best: { direction: ChickenDirection; score: number } | null = null;
+  let best: { direction: FrogDirection; score: number } | null = null;
   for (const candidate of candidates) {
     const { result, direction } = candidate;
     if (!result.moved) continue;
@@ -102,7 +127,7 @@ function chooseAction(
     if (rowGain < 0) score -= 250;
     if (
       rowGain === 0 &&
-      state.player.y === CHICKEN_CONFIG.HOME_ROW - 1
+      state.player.y === FROG_CONFIG.HOME_ROW - 1
     ) {
       score += 40;
     }
@@ -129,23 +154,23 @@ function chooseAction(
 }
 
 function playToWin(
-  engine: ChickenGameEngine,
+  engine: FrogGameEngine,
   targetSeed: string
 ): {
-  inputs: TimestampedInput<ChickenDirection>[];
-  state: ChickenState;
+  inputs: TimestampedInput<FrogDirection>[];
+  state: FrogState;
 } {
   let state = engine.init(targetSeed);
-  const inputs: TimestampedInput<ChickenDirection>[] = [];
+  const inputs: TimestampedInput<FrogDirection>[] = [];
   let guard = 0;
 
   while (
     state.status !== "WON" &&
     state.status !== "LOST" &&
-    state.tickCount < CHICKEN_CONFIG.MAX_TICKS &&
-    guard++ < CHICKEN_CONFIG.MAX_TICKS
+    state.tickCount < FROG_CONFIG.MAX_TICKS &&
+    guard++ < FROG_CONFIG.MAX_TICKS
   ) {
-    let action: ChickenDirection | undefined;
+    let action: FrogDirection | undefined;
     if (
       state.respawnTicks === 0 &&
       state.player.cooldown === 0 &&
@@ -156,7 +181,7 @@ function playToWin(
 
     if (action) {
       inputs.push({
-        t: state.tickCount * CHICKEN_CONFIG.TICK_MS,
+        t: state.tickCount * FROG_CONFIG.TICK_MS,
         tick: state.tickCount,
         action,
       });
@@ -170,8 +195,8 @@ function playToWin(
   return { inputs, state };
 }
 
-describe("Chicken Cross engine", () => {
-  const engine = new ChickenGameEngine();
+describe("Frog Cross engine", () => {
+  const engine = new FrogGameEngine();
 
   it("initializes a deterministic five-home course", () => {
     const state = engine.init(seed);
@@ -183,7 +208,7 @@ describe("Chicken Cross engine", () => {
     assert.equal(state.roadLanes.length, 5);
     assert.equal(state.riverLanes.length, 5);
     assert.equal(state.player.y, 0);
-    assert.equal(state.player.x, 6 * CHICKEN_CONFIG.SUB);
+    assert.equal(state.player.x, 6 * FROG_CONFIG.SUB);
     assert.equal(state.tickCount, 0);
 
     const again = engine.init(seed);
@@ -192,8 +217,8 @@ describe("Chicken Cross engine", () => {
   });
 
   it("produces different traffic for different days", () => {
-    const a = engine.init("2026-10-27:chicken:v1");
-    const b = engine.init("2026-10-28:chicken:v1");
+    const a = engine.init("2026-10-27:frog:v1");
+    const b = engine.init("2026-10-28:frog:v1");
 
     assert.notDeepEqual(a.roadLanes, b.roadLanes);
     assert.notDeepEqual(a.riverLanes, b.riverLanes);
@@ -218,12 +243,12 @@ describe("Chicken Cross engine", () => {
     const started = engine.step(engine.init(seed), "LEFT");
     assert.equal(started.state.status, "RUNNING");
     assert.equal(started.state.player.y, 0);
-    assert.equal(started.state.player.x, 5 * CHICKEN_CONFIG.SUB);
+    assert.equal(started.state.player.x, 5 * FROG_CONFIG.SUB);
     assert.equal(started.state.hops, 1);
     assert.equal(started.state.tickCount, 1);
   });
 
-  it("kills the chicken on a road vehicle", () => {
+  it("kills the frog on a road vehicle", () => {
     const base = engine.init(seed);
     const lane = base.roadLanes.find((entry) =>
       entry.vehicles.some((vehicle) => vehicle.length >= 2)
@@ -233,7 +258,7 @@ describe("Chicken Cross engine", () => {
     )!;
     const state = place(
       base,
-      vehicle.x + CHICKEN_CONFIG.SUB / 2,
+      vehicle.x + FROG_CONFIG.SUB / 2,
       lane.row
     );
     const result = engine.step(state);
@@ -244,7 +269,7 @@ describe("Chicken Cross engine", () => {
     assert.ok(result.state.respawnTicks > 0);
   });
 
-  it("drowns when the chicken is in open water", () => {
+  it("drowns when the frog is in open water", () => {
     const base = engine.init(seed);
     const state = clone(base);
     state.riverLanes = state.riverLanes.map((lane) =>
@@ -263,20 +288,18 @@ describe("Chicken Cross engine", () => {
     assert.equal(result.state.lives, 4);
   });
 
-  it("carries the chicken with a log", () => {
+  it("carries the frog with a log", () => {
     const base = engine.init(seed);
     const lane = base.riverLanes.find(
       (entry) =>
         entry.row === 7 &&
         entry.platforms.some((platform) => platform.kind === "log")
     )!;
-    const platform = lane.platforms.find(
-      (entry) => entry.kind === "log" && entry.length >= 2
-    )!;
+    const platform = pickPlatform(lane.platforms, "log");
     const startX =
       platform.x +
-      (platform.length * CHICKEN_CONFIG.SUB) / 2 -
-      CHICKEN_CONFIG.SUB / 2;
+      (platform.length * FROG_CONFIG.SUB) / 2 -
+      FROG_CONFIG.SUB / 2;
     const state = place(base, startX, lane.row, platform.id);
 
     const result = engine.step(state);
@@ -293,13 +316,11 @@ describe("Chicken Cross engine", () => {
     const lane = base.riverLanes.find((entry) =>
       entry.platforms.some((platform) => platform.kind === "turtle")
     )!;
-    const turtle = lane.platforms.find(
-      (entry) => entry.kind === "turtle"
-    )!;
+    const turtle = pickPlatform(lane.platforms, "turtle");
     const x =
       turtle.x +
-      (turtle.length * CHICKEN_CONFIG.SUB) / 2 -
-      CHICKEN_CONFIG.SUB / 2;
+      (turtle.length * FROG_CONFIG.SUB) / 2 -
+      FROG_CONFIG.SUB / 2;
 
     const floating = place(clone(base), x, lane.row, turtle.id);
     const up = engine.step(floating);
@@ -308,9 +329,9 @@ describe("Chicken Cross engine", () => {
 
     const down = clone(base);
     down.tickCount =
-      (CHICKEN_CONFIG.TURTLE_DOWN - turtle.phase +
-        CHICKEN_CONFIG.TURTLE_PERIOD) %
-      CHICKEN_CONFIG.TURTLE_PERIOD;
+      (FROG_CONFIG.TURTLE_DOWN - turtle.phase +
+        FROG_CONFIG.TURTLE_PERIOD) %
+      FROG_CONFIG.TURTLE_PERIOD;
     const submerged = place(down, x, lane.row, turtle.id);
     const result = engine.step(submerged);
 
@@ -318,17 +339,15 @@ describe("Chicken Cross engine", () => {
     assert.equal(result.state.lives, 4);
   });
 
-  it("kills the chicken on the alligator mouth", () => {
+  it("kills the frog on the alligator mouth", () => {
     const base = engine.init(seed);
     const lane = base.riverLanes.find((entry) =>
       entry.platforms.some((platform) => platform.kind === "alligator")
     )!;
-    const gator = lane.platforms.find(
-      (platform) => platform.kind === "alligator"
-    )!;
+    const gator = pickPlatform(lane.platforms, "alligator");
     const x =
       gator.x +
-      gator.mouthCell * CHICKEN_CONFIG.SUB;
+      gator.mouthCell * FROG_CONFIG.SUB;
     const state = place(clone(base), x, lane.row, gator.id);
 
     const result = engine.step(state);
@@ -336,12 +355,73 @@ describe("Chicken Cross engine", () => {
     assert.equal(result.state.lives, 4);
   });
 
-  it("fills a home and resets the chicken to the start", () => {
+  it("only kills the frog on real contact with a vehicle", () => {
+    const base = engine.init(seed);
+    const laneIndex = base.roadLanes.findIndex(
+      (lane) => lane.vehicles.length > 0
+    );
+    const lane = base.roadLanes[laneIndex];
+    const parked: RoadLane = {
+      ...lane,
+      direction: 1,
+      speed: 0,
+      vehicles: [
+        { ...lane.vehicles[0], x: 2 * FROG_CONFIG.SUB, length: 2, speed: 0 },
+      ],
+    };
+    const state = clone(base);
+    state.roadLanes = state.roadLanes.map((entry, index) =>
+      index === laneIndex ? parked : entry
+    );
+
+    const front = parked.vehicles[0].x + 2 * FROG_CONFIG.SUB;
+
+    // A sprite-length gap is not contact.
+    const brush = place(state, front + 0.1 * FROG_CONFIG.SUB, lane.row);
+    assert.equal(engine.step(brush).event, "none");
+
+    // Half a car length of overlap is.
+    const contact = place(state, front - 0.5 * FROG_CONFIG.SUB, lane.row);
+    assert.equal(engine.step(contact).event, "roadkill");
+  });
+
+  it("forgives the frog at the end of a platform", () => {
+    const base = engine.init(seed);
+    const laneIndex = base.riverLanes.findIndex((lane) =>
+      lane.platforms.some((platform) => platform.kind === "log")
+    );
+    const lane = base.riverLanes[laneIndex];
+    const log = pickPlatform(lane.platforms, "log");
+    const parked: RiverLane = {
+      ...lane,
+      direction: 1,
+      speed: 0,
+      platforms: [
+        { ...log, x: 3 * FROG_CONFIG.SUB, speed: 0, kind: "log", mouthCell: -1 },
+      ],
+    };
+    const state = clone(base);
+    state.riverLanes = state.riverLanes.map((entry, index) =>
+      index === laneIndex ? parked : entry
+    );
+
+    const end = parked.platforms[0].x + log.length * FROG_CONFIG.SUB;
+
+    // Standing on the very last sliver of the log is still safe.
+    const edge = place(state, end - 0.3 * FROG_CONFIG.SUB, lane.row);
+    assert.equal(engine.step(edge).event, "none");
+
+    // A full cell past the end is open water.
+    const off = place(state, end + 0.1 * FROG_CONFIG.SUB, lane.row);
+    assert.equal(engine.step(off).event, "drown");
+  });
+
+  it("fills a home and resets the frog to the start", () => {
     const base = engine.init(seed);
     const state = place(
       base,
-      6 * CHICKEN_CONFIG.SUB,
-      CHICKEN_CONFIG.HOME_ROW - 1
+      6 * FROG_CONFIG.SUB,
+      FROG_CONFIG.HOME_ROW - 1
     );
 
     const result = engine.step(state, "UP");
@@ -349,7 +429,7 @@ describe("Chicken Cross engine", () => {
     assert.equal(result.state.homesFilled, 1);
     assert.equal(result.state.homes[2], true);
     assert.equal(result.state.player.y, 0);
-    assert.equal(result.state.player.x, 6 * CHICKEN_CONFIG.SUB);
+    assert.equal(result.state.player.x, 6 * FROG_CONFIG.SUB);
     assert.equal(result.state.status, "RUNNING");
   });
 
@@ -357,15 +437,15 @@ describe("Chicken Cross engine", () => {
     const base = engine.init(seed);
     const hedge = place(
       base,
-      2 * CHICKEN_CONFIG.SUB,
-      CHICKEN_CONFIG.HOME_ROW - 1
+      2 * FROG_CONFIG.SUB,
+      FROG_CONFIG.HOME_ROW - 1
     );
     const blocked = engine.step(hedge, "UP");
 
     assert.equal(blocked.event, "blocked");
     assert.equal(blocked.moved, false);
     assert.equal(blocked.state.homesFilled, 0);
-    assert.equal(blocked.state.player.y, CHICKEN_CONFIG.HOME_ROW - 1);
+    assert.equal(blocked.state.player.y, FROG_CONFIG.HOME_ROW - 1);
   });
 
   it("wins when the fifth home is filled", () => {
@@ -374,8 +454,8 @@ describe("Chicken Cross engine", () => {
     base.homesFilled = 4;
     const state = place(
       base,
-      11 * CHICKEN_CONFIG.SUB,
-      CHICKEN_CONFIG.HOME_ROW - 1
+      11 * FROG_CONFIG.SUB,
+      FROG_CONFIG.HOME_ROW - 1
     );
 
     const result = engine.step(state, "UP");
@@ -392,7 +472,7 @@ describe("Chicken Cross engine", () => {
     assert.equal(state.homesFilled, 5);
     assert.ok(inputs.length > 10);
 
-    const claimedTimeMs = state.tickCount * CHICKEN_CONFIG.TICK_MS;
+    const claimedTimeMs = state.tickCount * FROG_CONFIG.TICK_MS;
     const result = engine.verify(seed, inputs, claimedTimeMs);
 
     assert.equal(result.valid, true, result.reason ?? "verification failed");
@@ -451,8 +531,8 @@ describe("Chicken Cross engine", () => {
   });
 
   it("exposes the public course configuration", () => {
-    assert.equal(CHICKEN_CONFIG.HOME_COLS.length, 5);
-    assert.equal(CHICKEN_CONFIG.LIVES, 5);
-    assert.equal(CHICKEN_CONFIG.HOME_ROW, 12);
+    assert.equal(FROG_CONFIG.HOME_COLS.length, 5);
+    assert.equal(FROG_CONFIG.LIVES, 5);
+    assert.equal(FROG_CONFIG.HOME_ROW, 12);
   });
 });

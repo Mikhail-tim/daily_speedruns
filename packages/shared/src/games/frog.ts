@@ -5,8 +5,8 @@ import {
   VerificationResult,
 } from "../types.js";
 
-export type ChickenDirection = "UP" | "DOWN" | "LEFT" | "RIGHT";
-export type ChickenEvent =
+export type FrogDirection = "UP" | "DOWN" | "LEFT" | "RIGHT";
+export type FrogEvent =
   | "none"
   | "roadkill"
   | "drown"
@@ -17,7 +17,7 @@ export type ChickenEvent =
   | "blocked"
   | "timeout";
 
-export type ChickenStatus = "READY" | "RUNNING" | "WON" | "LOST";
+export type FrogStatus = "READY" | "RUNNING" | "WON" | "LOST";
 
 export type VehicleKind = "bike" | "car" | "truck";
 export type PlatformKind = "log" | "turtle" | "alligator";
@@ -60,21 +60,21 @@ export interface RiverLane {
   platforms: Platform[];
 }
 
-export interface ChickenPlayer {
+export interface FrogPlayer {
   /** Left edge in sub-cells. Grid cells are exact multiples of SUB. */
   x: number;
   y: number;
-  facing: ChickenDirection;
+  facing: FrogDirection;
   cooldown: number;
   ridingPlatformId: number | null;
 }
 
-export interface ChickenState {
+export interface FrogState {
   seed: string;
   tickMs: number;
   tickCount: number;
-  status: ChickenStatus;
-  player: ChickenPlayer;
+  status: FrogStatus;
+  player: FrogPlayer;
   roadLanes: RoadLane[];
   riverLanes: RiverLane[];
   homes: boolean[];
@@ -85,11 +85,11 @@ export interface ChickenState {
   respawnTicks: number;
   respawnX: number;
   respawnY: number;
-  lastEvent: ChickenEvent;
+  lastEvent: FrogEvent;
   eventTick: number;
 }
 
-export interface ChickenSummary {
+export interface FrogSummary {
   ticks: number;
   homesFilled: number;
   deaths: number;
@@ -97,15 +97,15 @@ export interface ChickenSummary {
   hops: number;
 }
 
-export interface ChickenStepResult {
-  state: ChickenState;
+export interface FrogStepResult {
+  state: FrogState;
   win: boolean;
   gameOver: boolean;
-  event: ChickenEvent;
+  event: FrogEvent;
   moved: boolean;
 }
 
-export const CHICKEN_CONFIG = {
+export const FROG_CONFIG = {
   COLS: 13,
   ROWS: 13,
   SUB: 1000,
@@ -115,11 +115,12 @@ export const CHICKEN_CONFIG = {
   MEDIAN_ROW: 6,
   HOME_ROW: 12,
   HOME_COLS: [1, 3, 6, 9, 11] as const,
-  LILY_PADS: [
-    { row: 7, col: 6 },
-    { row: 9, col: 6 },
-    { row: 11, col: 6 },
-  ] as const,
+  /** Fraction of a cell trimmed from each side of the frog's hit box. */
+  FROG_HIT_INSET: 0.16,
+  /** Fraction of a cell trimmed from each end of a vehicle's hit box. */
+  VEHICLE_HIT_INSET: 0.12,
+  /** Extra reach (in cells) the frog gets at either end of a platform. */
+  PLATFORM_GRACE: 0.28,
   LIVES: 5,
   RESPAWN_TICKS: 20,
   MAX_TICKS: 9000,
@@ -131,10 +132,10 @@ export const CHICKEN_CONFIG = {
   TURTLE_DOWN: 205,
 } as const;
 
-const { COLS, SUB, HOME_ROW, MEDIAN_ROW, HOME_COLS } = CHICKEN_CONFIG;
+const { COLS, SUB, HOME_ROW, MEDIAN_ROW, HOME_COLS } = FROG_CONFIG;
 const BOARD_WIDTH = COLS * SUB;
 const DIRECTION_DELTAS: Record<
-  ChickenDirection,
+  FrogDirection,
   { x: number; y: number }
 > = {
   // Row 0 is the start bank and row 12 is the home row, so UP increases y.
@@ -204,33 +205,29 @@ export function getTurtlePhase(
 ): "up" | "warning" | "down" {
   if (platform.kind !== "turtle") return "up";
   const phase =
-    (tick + platform.phase) % CHICKEN_CONFIG.TURTLE_PERIOD;
-  if (phase >= CHICKEN_CONFIG.TURTLE_DOWN) return "down";
-  if (phase >= CHICKEN_CONFIG.TURTLE_WARNING) return "warning";
+    (tick + platform.phase) % FROG_CONFIG.TURTLE_PERIOD;
+  if (phase >= FROG_CONFIG.TURTLE_DOWN) return "down";
+  if (phase >= FROG_CONFIG.TURTLE_WARNING) return "warning";
   return "up";
 }
 
 function platformCovers(platform: Platform, x: number): boolean {
   const center = x + SUB / 2;
+  const grace = FROG_CONFIG.PLATFORM_GRACE * SUB;
   return (
-    center >= platform.x &&
-    center < platform.x + platform.length * SUB
+    center >= platform.x - grace &&
+    center < platform.x + platform.length * SUB + grace
   );
 }
 
 function hitsAlligatorMouth(platform: Platform, x: number): boolean {
   if (platform.kind !== "alligator" || platform.mouthCell < 0) return false;
   const center = x + SUB / 2;
-  const start = platform.x + platform.mouthCell * SUB;
-  return center >= start && center < start + SUB;
-}
-
-function isOnLilyPad(row: number, x: number): boolean {
-  const center = x + SUB / 2;
-  const col = Math.floor(center / SUB);
-  return CHICKEN_CONFIG.LILY_PADS.some(
-    (pad) => pad.row === row && pad.col === col
-  );
+  // The mouth only bites the inner part of its cell, so brushing the very
+  // leading edge of the log is survivable.
+  const inset = 0.18 * SUB;
+  const start = platform.x + platform.mouthCell * SUB + inset;
+  return center >= start && center < start + SUB - inset * 2;
 }
 
 function buildRoadLane(seed: string, spec: RoadSpec): RoadLane {
@@ -288,7 +285,7 @@ function buildRiverLane(seed: string, spec: RiverSpec): RiverLane {
       speed,
       phase:
         spec.kind === "turtle"
-          ? randomInt(rng, 0, CHICKEN_CONFIG.TURTLE_PERIOD - 1)
+          ? randomInt(rng, 0, FROG_CONFIG.TURTLE_PERIOD - 1)
           : 0,
       mouthCell: -1,
     });
@@ -341,9 +338,9 @@ function addAlligator(riverLanes: RiverLane[], seed: string): RiverLane[] {
   return riverLanes;
 }
 
-function initialPlayer(): ChickenPlayer {
+function initialPlayer(): FrogPlayer {
   return {
-    x: CHICKEN_CONFIG.START_COL * SUB,
+    x: FROG_CONFIG.START_COL * SUB,
     y: 0,
     facing: "UP",
     cooldown: 0,
@@ -373,16 +370,20 @@ function vehicleHitsFrog(
   frogStart: number,
   frogEnd: number
 ): boolean {
-  const newStart = vehicle.x;
-  const newEnd = vehicle.x + vehicle.length * SUB;
-  const oldStart = wrap(
+  // Both boxes are trimmed so the frog only dies on real contact, not when it
+  // is merely next to a sprite.
+  const inset = FROG_CONFIG.VEHICLE_HIT_INSET * SUB;
+  const newStart = vehicle.x + inset;
+  const newEnd = vehicle.x + vehicle.length * SUB - inset;
+  const oldX = wrap(
     vehicle.x - lane.direction * lane.speed,
     lane.laneLength
   );
-  const oldEnd = oldStart + vehicle.length * SUB;
+  const oldStart = wrap(oldX + inset, lane.laneLength);
+  const oldEnd = oldX + vehicle.length * SUB - inset;
 
   const wrapped =
-    lane.direction === 1 ? newStart < oldStart : newStart > oldStart;
+    lane.direction === 1 ? oldX > vehicle.x : oldX < vehicle.x;
 
   if (!wrapped) {
     return spansOverlap(
@@ -406,16 +407,16 @@ function vehicleHitsFrog(
   );
 }
 
-export class ChickenGameEngine
-  implements GameEngine<ChickenDirection, ChickenState, ChickenSummary>
+export class FrogGameEngine
+  implements GameEngine<FrogDirection, FrogState, FrogSummary>
 {
-  readonly gameId = "chicken";
-  readonly name = "Chicken Cross: River Run";
+  readonly gameId = "frog";
+  readonly name = "Frog Cross: River Run";
   readonly description =
-    "Cross five lanes of night traffic, ride the river, and fill all five homes.";
+    "Hop a neon frog across five lanes of night traffic, ride the river, and fill all five homes.";
   readonly targetDescription = "Fill all 5 homes";
 
-  init(seed: string): ChickenState {
+  init(seed: string): FrogState {
     const roadLanes = ROAD_SPECS.map((spec) => buildRoadLane(seed, spec));
     const riverLanes = addAlligator(
       RIVER_SPECS.map((spec) => buildRiverLane(seed, spec)),
@@ -424,7 +425,7 @@ export class ChickenGameEngine
 
     return {
       seed,
-      tickMs: CHICKEN_CONFIG.TICK_MS,
+      tickMs: FROG_CONFIG.TICK_MS,
       tickCount: 0,
       status: "READY",
       player: initialPlayer(),
@@ -432,18 +433,18 @@ export class ChickenGameEngine
       riverLanes,
       homes: new Array<boolean>(HOME_COLS.length).fill(false),
       homesFilled: 0,
-      lives: CHICKEN_CONFIG.LIVES,
+      lives: FROG_CONFIG.LIVES,
       deaths: 0,
       hops: 0,
       respawnTicks: 0,
-      respawnX: CHICKEN_CONFIG.START_COL * SUB,
+      respawnX: FROG_CONFIG.START_COL * SUB,
       respawnY: 0,
       lastEvent: "none",
       eventTick: 0,
     };
   }
 
-  private advanceWorld(state: ChickenState): ChickenState {
+  private advanceWorld(state: FrogState): FrogState {
     const roadLanes = state.roadLanes.map((lane) => ({
       ...lane,
       vehicles: lane.vehicles.map((vehicle) => ({
@@ -470,9 +471,9 @@ export class ChickenGameEngine
   }
 
   private die(
-    state: ChickenState,
-    event: ChickenEvent
-  ): ChickenState {
+    state: FrogState,
+    event: FrogEvent
+  ): FrogState {
     const lives = state.lives - 1;
     const riverDeath =
       state.player.y >= 7 && state.player.y <= 11;
@@ -484,9 +485,9 @@ export class ChickenGameEngine
             Math.floor((state.player.x + SUB / 2) / SUB)
           )
         ) * SUB
-      : CHICKEN_CONFIG.START_COL * SUB;
+      : FROG_CONFIG.START_COL * SUB;
     const respawnY = riverDeath ? MEDIAN_ROW : 0;
-    const next: ChickenState = {
+    const next: FrogState = {
       ...state,
       lives: Math.max(0, lives),
       deaths: state.deaths + 1,
@@ -504,33 +505,29 @@ export class ChickenGameEngine
     return {
       ...next,
       status: "RUNNING",
-      respawnTicks: CHICKEN_CONFIG.RESPAWN_TICKS,
+      respawnTicks: FROG_CONFIG.RESPAWN_TICKS,
     };
   }
 
-  private sideCollision(state: ChickenState): boolean {
+  private sideCollision(state: FrogState): boolean {
     const { player } = state;
     if (!isRoadRow(player.y)) return false;
 
     const lane = state.roadLanes.find((entry) => entry.row === player.y);
     if (!lane) return false;
 
-    const frogStart = player.x;
-    const frogEnd = player.x + SUB;
+    const frogStart = player.x + FROG_CONFIG.FROG_HIT_INSET * SUB;
+    const frogEnd = player.x + SUB - FROG_CONFIG.FROG_HIT_INSET * SUB;
     return lane.vehicles.some((vehicle) =>
       vehicleHitsFrog(vehicle, lane, frogStart, frogEnd)
     );
   }
 
   private riverHazard(
-    state: ChickenState
-  ): { platform?: Platform; event?: ChickenEvent; safe?: boolean } {
+    state: FrogState
+  ): { platform?: Platform; event?: FrogEvent } {
     const { player } = state;
     if (!isRiverRow(player.y)) return {};
-
-    if (isOnLilyPad(player.y, player.x)) {
-      return { safe: true };
-    }
 
     const lane = state.riverLanes.find((entry) => entry.row === player.y);
     if (!lane) return { event: "drown" };
@@ -555,12 +552,12 @@ export class ChickenGameEngine
     return { platform };
   }
 
-  private checkEdge(state: ChickenState): boolean {
+  private checkEdge(state: FrogState): boolean {
     const center = state.player.x + SUB / 2;
     return center < 0 || center >= BOARD_WIDTH;
   }
 
-  private resetToStart(state: ChickenState): ChickenState {
+  private resetToStart(state: FrogState): FrogState {
     return {
       ...state,
       player: {
@@ -573,9 +570,9 @@ export class ChickenGameEngine
   }
 
   step(
-    state: ChickenState,
-    action?: ChickenDirection
-  ): ChickenStepResult {
+    state: FrogState,
+    action?: FrogDirection
+  ): FrogStepResult {
     if (state.status === "WON" || state.status === "LOST") {
       return {
         state,
@@ -619,19 +616,19 @@ export class ChickenGameEngine
       };
     }
 
-    let player: ChickenPlayer = {
+    let player: FrogPlayer = {
       ...next.player,
       cooldown: Math.max(0, next.player.cooldown - 1),
     };
     let moved = false;
-    let stepEvent: ChickenEvent = "none";
+    let stepEvent: FrogEvent = "none";
     let died = false;
     const wasRiding = next.player.ridingPlatformId !== null;
     let justHopped = false;
 
     if (action && player.cooldown === 0) {
       next = { ...next, status: "RUNNING" };
-      player = { ...player, facing: action, cooldown: CHICKEN_CONFIG.HOP_TICKS };
+      player = { ...player, facing: action, cooldown: FROG_CONFIG.HOP_TICKS };
       const delta = DIRECTION_DELTAS[action];
       const targetY = player.y + delta.y;
       const targetX = player.x + delta.x;
@@ -653,7 +650,7 @@ export class ChickenGameEngine
             hops: next.hops + 1,
             lastEvent: "home",
             eventTick: next.tickCount,
-            respawnX: CHICKEN_CONFIG.START_COL * SUB,
+            respawnX: FROG_CONFIG.START_COL * SUB,
             respawnY: 0,
             status: isWin ? "WON" : "RUNNING",
             player: isWin
@@ -737,11 +734,6 @@ export class ChickenGameEngine
             ridingPlatformId: hazard.platform.id,
           },
         };
-      } else if (hazard.safe) {
-        next = {
-          ...next,
-          player: { ...next.player, ridingPlatformId: null },
-        };
       }
     } else {
       next = {
@@ -769,7 +761,7 @@ export class ChickenGameEngine
     if (
       next.status !== "WON" &&
       next.status !== "LOST" &&
-      tickCount >= CHICKEN_CONFIG.MAX_TICKS
+      tickCount >= FROG_CONFIG.MAX_TICKS
     ) {
       next = {
         ...this.die(next, "timeout"),
@@ -801,19 +793,19 @@ export class ChickenGameEngine
 
   verify(
     seed: string,
-    inputs: TimestampedInput<ChickenDirection>[],
+    inputs: TimestampedInput<FrogDirection>[],
     claimedTimeMs: number
-  ): VerificationResult<ChickenSummary> {
+  ): VerificationResult<FrogSummary> {
     if (!claimedTimeMs || claimedTimeMs <= 0) {
       return { valid: false, reason: "Invalid claimed time" };
     }
     if (!Array.isArray(inputs) || inputs.length === 0) {
       return { valid: false, reason: "Inputs must be a non-empty array" };
     }
-    if (inputs.length > CHICKEN_CONFIG.MAX_INPUTS) {
+    if (inputs.length > FROG_CONFIG.MAX_INPUTS) {
       return { valid: false, reason: "Too many input events" };
     }
-    if (claimedTimeMs < CHICKEN_CONFIG.MIN_RUN_TIME_MS) {
+    if (claimedTimeMs < FROG_CONFIG.MIN_RUN_TIME_MS) {
       return {
         valid: false,
         reason: "Run time is below plausible human reaction speed",
@@ -843,7 +835,7 @@ export class ChickenGameEngine
       const tick =
         input.tick !== undefined
           ? input.tick
-          : Math.round(input.t / CHICKEN_CONFIG.TICK_MS);
+          : Math.round(input.t / FROG_CONFIG.TICK_MS);
       if (!isInteger(tick) || tick < 0) {
         return { valid: false, reason: `Invalid tick at input ${i + 1}` };
       }
@@ -863,8 +855,8 @@ export class ChickenGameEngine
     let state = this.init(seed);
     let inputIndex = 0;
 
-    while (state.tickCount < CHICKEN_CONFIG.MAX_TICKS) {
-      let action: ChickenDirection | undefined;
+    while (state.tickCount < FROG_CONFIG.MAX_TICKS) {
+      let action: FrogDirection | undefined;
       if (
         inputIndex < inputs.length &&
         ticks[inputIndex] === state.tickCount
@@ -891,7 +883,7 @@ export class ChickenGameEngine
       if (result.win) {
         const simulatedTimeMs = state.tickCount * state.tickMs;
         const drift = Math.abs(claimedTimeMs - simulatedTimeMs);
-        if (drift > CHICKEN_CONFIG.MAX_ALLOWED_DRIFT_MS) {
+        if (drift > FROG_CONFIG.MAX_ALLOWED_DRIFT_MS) {
           return {
             valid: false,
             reason: `Claimed time (${claimedTimeMs}ms) drifted excessively from simulated time (${simulatedTimeMs}ms)`,

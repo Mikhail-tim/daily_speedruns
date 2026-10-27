@@ -145,23 +145,25 @@ stops when the last of the 71 safe squares is revealed.
 
 ---
 
-### 🐔 Chicken Cross: River Run
+### � Frog Cross: River Run
 
-Cross five lanes of night traffic, ride the river, and fill all five homes as
-fast as possible.
+Guide a glowing dark-green frog across five lanes of night traffic, ride the
+river, and fill all five homes as fast as possible.
 
-- **5 homes, 5 lives.** Each home fills with a chicken and resets you to the
+- **5 homes, 5 lives.** Each home fills with a frog and resets you to the
   start; fill all five to win. River deaths respawn at the median checkpoint;
   road deaths restart from the bottom.
 - **Road:** five lanes of deterministic traffic — bikes, cars and trucks in
   both directions. Cross when the gaps align.
-- **River:** logs, diving turtles, one alligator log and three glowing lily-pad
-  rest points. You must be on a platform or a lily pad; turtles sink on a fixed
-  cycle, and the alligator's mouth is deadly.
+- **River:** logs, diving turtles and one alligator log. You must be on a
+  platform; turtles sink on a fixed cycle, and the alligator's mouth is deadly.
+- **Forgiving hit boxes:** both the frog and the vehicles are trimmed to their
+  art, and platforms give the frog a little reach past their ends, so deaths
+  only happen on real contact.
 - **Controls:** arrows/WASD, swipe, or the D-pad. Hops are cooldown-limited, so
   timing matters more than spam.
 - **Modern night-city canvas:** headlights, wet asphalt, animated water, dive
-  warnings and particles. No external assets.
+  warnings, eased hops and particles. No external assets.
 - A clean run is replayed against the daily seed by the server.
 
 ---

@@ -9,7 +9,7 @@ export * from "./games/game2048.js";
 export * from "./games/math.js";
 export * from "./games/captcha.js";
 export * from "./games/minesweeper.js";
-export * from "./games/chicken.js";
+export * from "./games/frog.js";
 export * from "./games/captcha-manifest.js";
 export * from "./games/registry.js";
 
