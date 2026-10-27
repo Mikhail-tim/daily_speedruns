@@ -24,6 +24,7 @@ import { WordleGame } from "./components/WordleGame.js";
 import { TypingGame } from "./components/TypingGame.js";
 import { Game2048 } from "./components/Game2048.js";
 import { MinesweeperGame } from "./components/MinesweeperGame.js";
+import { ChickenCross } from "./components/ChickenCross.js";
 import { MathSprint } from "./components/MathSprint.js";
 import { CaptchaGame } from "./components/CaptchaGame.js";
 import { DoomGame, type DoomSubmitResult } from "./components/DoomGame.js";
@@ -44,7 +45,8 @@ type GameId =
   | "snake"
   | "game2048"
   | "doom"
-  | "minesweeper";
+  | "minesweeper"
+  | "chicken";
 type RailView = "today" | PlaceholderView;
 
 const GAME_RAIL: Array<{
@@ -61,6 +63,7 @@ const GAME_RAIL: Array<{
   { id: "game2048", index: "06", label: "2048", meta: "512" },
   { id: "doom", index: "07", label: "Doom", meta: "E1M1" },
   { id: "minesweeper", index: "08", label: "Minesweeper", meta: "9×9" },
+  { id: "chicken", index: "09", label: "Chicken Cross", meta: "5 homes" },
 ];
 
 const RAIL_NAV: Array<{ id: RailView; index: string; label: string }> = [
@@ -549,9 +552,17 @@ export const App: React.FC = () => {
                       onToggleFocus={() => setIsFocusMode((prev) => !prev)}
                       onRunFinished={handleRunFinished}
                     />
-                  ) : (
+                  ) : selectedGame === "minesweeper" ? (
                     <MinesweeperGame
                       key={`minesweeper-${activeChallenge.seed}`}
+                      seed={activeChallenge.seed}
+                      isFocusMode={isFocusMode}
+                      onToggleFocus={() => setIsFocusMode((prev) => !prev)}
+                      onRunFinished={handleRunFinished}
+                    />
+                  ) : (
+                    <ChickenCross
+                      key={`chicken-${activeChallenge.seed}`}
                       seed={activeChallenge.seed}
                       isFocusMode={isFocusMode}
                       onToggleFocus={() => setIsFocusMode((prev) => !prev)}

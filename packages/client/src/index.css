@@ -4594,4 +4594,47 @@ body::-webkit-scrollbar,
   text-transform: uppercase;
 }
 
+/* =========================================================
+   CHICKEN CROSS (NIGHT RIVER)
+   ========================================================= */
+.chicken-card {
+  max-width: 620px;
+}
+
+.chicken-board-wrapper {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--border-light);
+  background: #05080b;
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.6);
+  touch-action: none;
+}
+
+.chicken-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.arena-app .chicken-card {
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+.arena-app .chicken-board-wrapper {
+  border: 1px solid var(--arena-line);
+  border-radius: 0;
+  background: #05080b;
+  box-shadow: none;
+}
+
+@media (max-width: 480px) {
+  .arena-app .chicken-card {
+    padding: 16px;
+  }
+}
+
 
