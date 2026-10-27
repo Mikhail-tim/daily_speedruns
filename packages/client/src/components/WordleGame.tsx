@@ -188,7 +188,8 @@ export const WordleGame: React.FC<WordleGameProps> = ({
         }
       }
 
-      if (e.code === "KeyF") {
+      if (e.code === "F2") {
+        e.preventDefault();
         onToggleFocus();
         return;
       }
@@ -349,7 +350,7 @@ export const WordleGame: React.FC<WordleGameProps> = ({
         >
           <span>{isFocusMode ? "Exit Focus" : "Focus Mode"}</span>
           <span className="keycap" style={{ fontSize: "10px" }}>
-            F
+            F2
           </span>
         </button>
       </div>

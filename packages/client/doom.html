@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>Doom runtime — Daily Speedruns</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="doom-shell">
+      <header id="doom-hud">
+        <span class="rail-label">E1M1 · UV</span>
+        <span id="doom-timer">0:00.00</span>
+      </header>
+
+      <div id="doom-stage">
+        <canvas
+          id="canvas"
+          class="doom-canvas"
+          width="320"
+          height="240"
+          tabindex="0"
+          aria-label="Doom game view"
+        ></canvas>
+
+        <div id="doom-overlay">
+          <h1 id="overlay-title">Starting engine</h1>
+          <p id="overlay-body">Preparing the shareware episode.</p>
+          <div id="overlay-bar" hidden><span id="overlay-fill"></span></div>
+        </div>
+      </div>
+
+      <footer id="doom-controls">
+        <button id="finish-button" type="button">
+          Finish run <kbd>F10</kbd>
+        </button>
+        <button id="menu-button" type="button">Doom menu</button>
+        <button id="restart-button" type="button">Restart</button>
+        <button id="exit-button" type="button">Leave</button>
+        <span id="doom-metrics" hidden></span>
+        <span id="doom-hud-status">Booting</span>
+      </footer>
+
+      <pre id="doom-log" aria-live="polite"></pre>
+    </div>
+
+    <script type="module" src="/src/doom/runtime.ts"></script>
+  </body>
+</html>

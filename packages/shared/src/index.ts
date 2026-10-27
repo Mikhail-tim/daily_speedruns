@@ -1,5 +1,7 @@
 export * from "./types.js";
 export * from "./prng.js";
+export * from "./doom.js";
+export * from "./games/doom.js";
 export * from "./games/snake.js";
 export * from "./games/wordle.js";
 export * from "./games/typing.js";

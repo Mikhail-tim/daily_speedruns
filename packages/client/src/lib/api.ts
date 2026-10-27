@@ -6,15 +6,28 @@ export interface ChallengeResponse extends Challenge {
   targetDescription: string;
 }
 
+export interface PendingRunResponse {
+  id: string;
+  date: string;
+  gameId: string;
+  timeMs: number;
+  reviewStatus: string;
+  createdAt: number;
+}
+
 export interface LeaderboardResponse {
   date: string;
   gameId?: string;
   leaderboard: LeaderboardEntry[];
   userBestTimeMs: number | null;
+  /** Doom only: the runner's best run still waiting for demo review. */
+  pendingRun?: PendingRunResponse | null;
 }
 
 export interface SubmissionResponse {
   verified: boolean;
+  /** Doom only: runs land as `pending` until a reviewer replays the demo. */
+  reviewStatus?: "pending" | "verified" | "rejected";
   runId?: string;
   verifiedTimeMs?: number;
   rank?: number | null;

@@ -176,7 +176,8 @@ export const TypingGame: React.FC<TypingGameProps> = ({
         }
       }
 
-      if (e.code === "KeyF" && !(e.target instanceof HTMLInputElement)) {
+      if (e.code === "F2") {
+        e.preventDefault();
         onToggleFocus();
         return;
       }
@@ -347,7 +348,7 @@ export const TypingGame: React.FC<TypingGameProps> = ({
         >
           <span>{isFocusMode ? "Exit Focus" : "Focus Mode"}</span>
           <span className="keycap" style={{ fontSize: "10px" }}>
-            F
+            F2
           </span>
         </button>
       </div>

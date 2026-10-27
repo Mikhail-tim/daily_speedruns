@@ -1,0 +1,323 @@
+/* Doom event card. Uses the arena design tokens from index.css. */
+
+.doom-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.doom-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.doom-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.doom-eyebrow {
+  display: block;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--arena-dim);
+  margin-bottom: 6px;
+}
+
+.doom-head h3 {
+  margin: 0;
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: clamp(22px, 3vw, 30px);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--arena-text);
+}
+
+.doom-head h3 span {
+  color: var(--arena-muted);
+  font-weight: 400;
+}
+
+.doom-clock {
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: clamp(26px, 4vw, 38px);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--arena-text);
+  border-left: 1px solid var(--arena-line);
+  padding-left: 16px;
+  white-space: nowrap;
+}
+
+/* Locked competitive settings */
+
+.doom-locked {
+  border: 1px solid var(--arena-line);
+  border-left: 2px solid var(--arena-signal);
+  background: var(--arena-panel-2);
+  padding: 12px 14px;
+}
+
+.doom-locked-label {
+  display: block;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--arena-signal);
+  margin-bottom: 8px;
+}
+
+.doom-locked ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+}
+
+.doom-locked li {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  color: var(--arena-muted);
+}
+
+.doom-locked li::before {
+  content: "· ";
+  color: var(--arena-dim);
+}
+
+/* Player settings */
+
+.doom-settings {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px 16px;
+}
+
+.doom-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--arena-dim);
+}
+
+.doom-field select,
+.doom-field input[type="range"] {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  color: var(--arena-text);
+  background: var(--arena-panel-2);
+  border: 1px solid var(--arena-line);
+  padding: 7px 8px;
+  letter-spacing: 0;
+  text-transform: none;
+  appearance: none;
+}
+
+.doom-field input[type="range"] {
+  padding: 0;
+  height: 30px;
+  border: none;
+  background: transparent;
+  accent-color: var(--arena-signal);
+}
+
+.doom-field output {
+  font-size: 11px;
+  color: var(--arena-muted);
+  letter-spacing: 0;
+}
+
+/* Actions */
+
+.doom-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+}
+
+.doom-start {
+  min-width: 180px;
+}
+
+.doom-fineprint {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--arena-dim);
+  max-width: 46ch;
+}
+
+.doom-fineprint kbd {
+  font: inherit;
+  border: 1px solid var(--arena-line);
+  padding: 1px 5px;
+  color: var(--arena-muted);
+}
+
+/* Status + result */
+
+.doom-status-line {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  color: var(--arena-muted);
+}
+
+.doom-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--arena-signal);
+  flex: 0 0 auto;
+}
+
+.doom-dot.is-ok {
+  background: var(--arena-ok);
+}
+
+.doom-dot.is-bad {
+  background: #ff5252;
+}
+
+.doom-result {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1px;
+  background: var(--arena-line);
+  border: 1px solid var(--arena-line);
+}
+
+.doom-result > div {
+  background: var(--arena-panel);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.doom-result dt {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--arena-dim);
+}
+
+.doom-result dd {
+  margin: 0;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 13px;
+  color: var(--arena-text);
+}
+
+.doom-result dd.is-ok {
+  color: var(--arena-ok);
+}
+
+.doom-result dd.is-bad {
+  color: #ff5252;
+}
+
+.doom-result dd.is-pending {
+  color: var(--arena-signal);
+}
+
+/* Desktop gate */
+
+.doom-gate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  padding: 32px;
+}
+
+.doom-gate-inner {
+  max-width: 52ch;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.doom-gate-inner h3 {
+  margin: 0;
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: clamp(20px, 3vw, 28px);
+  font-weight: 600;
+  color: var(--arena-text);
+}
+
+.doom-gate-inner p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--arena-muted);
+}
+
+.doom-gate-note {
+  color: var(--arena-dim) !important;
+  font-size: 12px !important;
+}
+
+.doom-gate-code {
+  align-self: center;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--arena-line);
+  background: var(--arena-panel-2);
+  color: var(--arena-text);
+}
+
+/* Fullscreen engine host */
+
+/*
+ * The overlay already pins itself to the viewport with `inset: 0`, and the
+ * browser sizes a fullscreen element for us. Deliberately no `100vw`/`100dvh`
+ * here: `100vw` includes the scrollbar width and `100dvh` can round up, and
+ * either one makes the frame slightly larger than its box, which shifts the
+ * game off the right and bottom edges.
+ */
+.doom-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  background: #000;
+  display: block;
+}
+
+.doom-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #000;
+}
+
+@media (max-width: 720px) {
+  .doom-head {
+    flex-direction: column;
+  }
+
+  .doom-clock {
+    border-left: none;
+    padding-left: 0;
+  }
+}

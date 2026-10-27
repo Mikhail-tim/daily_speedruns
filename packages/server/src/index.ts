@@ -5,11 +5,13 @@ import { Env } from "./types.js";
 import {
   getLeaderboard,
   getOrCreateDailyChallenge,
+  getPendingRun,
   getTodayDateString,
   getUserBestRun,
   saveRun,
   upsertUser,
 } from "./db.js";
+import { validateDoomRun } from "./doom.js";
 import {
   RUNNER_TOKEN_HEADER,
   hashRunnerToken,
@@ -161,8 +163,10 @@ app.get("/api/leaderboard", async (c) => {
   const leaderboard = await getLeaderboard(c.env.DB, dateParam, gameParam, userId);
 
   let userBest: number | null = null;
+  let pendingRun: Awaited<ReturnType<typeof getPendingRun>> = null;
   if (userId) {
     userBest = await getUserBestRun(c.env.DB, userId, dateParam, gameParam);
+    pendingRun = await getPendingRun(c.env.DB, userId, dateParam, gameParam);
   }
 
   return c.json({
@@ -170,6 +174,7 @@ app.get("/api/leaderboard", async (c) => {
     gameId: gameParam,
     leaderboard,
     userBestTimeMs: userBest,
+    pendingRun,
   });
 });
 
@@ -196,7 +201,7 @@ app.post("/api/runs", async (c) => {
     return c.json({ error: "Invalid JSON body" }, 400);
   }
 
-  const { userId, nickname, date, gameId, timeMs, inputs } = body;
+  const { userId, nickname, date, gameId, timeMs, inputs, proof } = body;
 
   if (!userId || typeof userId !== "string" || userId.length > 100) {
     return c.json({ error: "Missing or invalid userId" }, 400);
@@ -226,9 +231,15 @@ app.post("/api/runs", async (c) => {
     return c.json({ error: "Missing or invalid nickname" }, 400);
   }
 
-  const inputsError = validateRunInputs(inputs);
-  if (inputsError) {
-    return c.json({ error: inputsError }, 400);
+  const isDoom = gameId === "doom";
+
+  // Doom uploads a demo instead of an input stream, so the replay input rules
+  // do not apply to it.
+  if (!isDoom) {
+    const inputsError = validateRunInputs(inputs);
+    if (inputsError) {
+      return c.json({ error: inputsError }, 400);
+    }
   }
 
   // Writes require the runner's local capability token. This is not a full
@@ -241,6 +252,54 @@ app.post("/api/runs", async (c) => {
   );
   if (!auth.ok) {
     return c.json({ error: auth.error }, 401);
+  }
+
+  // --- DOOM: DEMO ARTIFACT, MANUAL REVIEW ---
+  // The engine cannot be replayed on the edge, so the best the server can do is
+  // prove the demo is intact and on the locked challenge, then park the run as
+  // pending until a reviewer replays it.
+  if (isDoom) {
+    const validation = await validateDoomRun({ timeMs, proof });
+    if (!validation.ok) {
+      return c.json(
+        {
+          verified: false,
+          error: "Doom run rejected",
+          reason: validation.error,
+        },
+        422
+      );
+    }
+
+    await getOrCreateDailyChallenge(c.env.DB, date, "doom");
+
+    const runId = crypto.randomUUID();
+    await saveRun(c.env.DB, {
+      id: runId,
+      userId,
+      date,
+      gameId: "doom",
+      timeMs: validation.timeMs,
+      inputs: "[]",
+      verified: false,
+      reviewStatus: "pending",
+      proof: {
+        kind: "doom-demo",
+        data: validation.demoBase64,
+        sha256: validation.demoSha256,
+        tics: validation.demoTics,
+      },
+    });
+
+    return c.json(
+      {
+        verified: false,
+        reviewStatus: "pending",
+        runId,
+        reason: "Waiting for demo review",
+      },
+      202
+    );
   }
 
   // Retrieve challenge to get authoritative seed for that game
@@ -355,6 +414,7 @@ export default {
         getOrCreateDailyChallenge(env.DB, today, "math"),
         getOrCreateDailyChallenge(env.DB, today, "captcha"),
         getOrCreateDailyChallenge(env.DB, today, "minesweeper"),
+        getOrCreateDailyChallenge(env.DB, today, "doom"),
       ])
     );
   },

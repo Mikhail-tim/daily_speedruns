@@ -1,0 +1,329 @@
+/* Isolated Doom runtime page. Self contained: it never loads the site CSS. */
+
+:root {
+  --ink: #f2efe8;
+  --muted: #9a9a93;
+  --dim: #65665f;
+  --line: rgba(242, 239, 232, 0.16);
+  --signal: #ff4d00;
+  --ok: #7ce3a5;
+  --bg: #07080a;
+  /* Equal rails keep the game centred in the window, not just in its stage. */
+  --rail-left: 124px;
+  --rail-right: 124px;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/*
+ * Three columns: timer rail, game, controls rail.
+ *
+ * Doom is 4:3, so on a widescreen monitor the horizontal space is the leftover.
+ * Putting the bars on the sides lets the game use the entire viewport height
+ * instead of giving up ~75px to a top bar and a bottom bar.
+ *
+ * Pinned to the viewport rather than sized with `100dvh`: on some zoom levels
+ * and fullscreen transitions the dynamic viewport unit can disagree with the
+ * visible box by a few pixels, which then clips the bottom edge of the game.
+ * `inset: 0` always tracks the real layout viewport.
+ */
+#doom-shell {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-columns: var(--rail-left) minmax(0, 1fr) var(--rail-right);
+  overflow: hidden;
+}
+
+/* ---------- Left rail: event + timer ---------- */
+
+#doom-hud {
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 10px;
+  border-right: 1px solid var(--line);
+  background: rgba(11, 12, 14, 0.94);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.rail-label {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+#doom-timer {
+  font-family: "Barlow Condensed", "IBM Plex Mono", monospace;
+  font-size: 22px;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+/* ---------- Stage ---------- */
+
+#doom-stage {
+  grid-column: 2;
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  background: #000;
+}
+
+/*
+ * The canvas box is sized in JS (`layoutCanvas`) to an exact 4:3 rectangle that
+ * fits the stage, and positioned at whole-pixel offsets. A percentage offset or
+ * a `translate(-50%)` lands on fractional pixels once the browser is zoomed
+ * off 100%, which nudges the image; integers cannot.
+ */
+#canvas,
+#doom-canvas,
+.doom-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  background: #000;
+  outline: none;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+#doom-stage.is-smooth #canvas,
+#doom-stage.is-smooth #doom-canvas,
+#doom-stage.is-smooth .doom-canvas {
+  image-rendering: auto;
+}
+
+/* ---------- Overlay ---------- */
+
+#doom-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 14px;
+  padding: 32px;
+  text-align: center;
+  background: radial-gradient(
+    circle at 50% 40%,
+    rgba(20, 21, 24, 0.94),
+    rgba(7, 8, 10, 0.98)
+  );
+  z-index: 2;
+}
+
+#doom-overlay[hidden] {
+  display: none;
+}
+
+#overlay-title {
+  margin: 0;
+  font-family: "Barlow Condensed", "IBM Plex Mono", monospace;
+  font-size: clamp(24px, 4vw, 40px);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+#overlay-body {
+  margin: 0;
+  max-width: 46ch;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+#overlay-bar {
+  width: min(360px, 70vw);
+  height: 3px;
+  margin: 0 auto;
+  background: rgba(242, 239, 232, 0.12);
+  overflow: hidden;
+}
+
+#overlay-bar[hidden] {
+  display: none;
+}
+
+#overlay-fill {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: var(--signal);
+  transition: width 120ms linear;
+}
+
+/* ---------- Right rail: controls ---------- */
+
+#doom-controls {
+  grid-column: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 14px 10px;
+  border-left: 1px solid var(--line);
+  background: rgba(11, 12, 14, 0.94);
+  min-width: 0;
+  overflow: hidden;
+}
+
+#doom-controls button {
+  appearance: none;
+  width: 100%;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 9px;
+  line-height: 1.35;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 8px 6px;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+#doom-controls button:hover:not(:disabled) {
+  border-color: rgba(242, 239, 232, 0.4);
+  background: rgba(242, 239, 232, 0.06);
+}
+
+#doom-controls button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+#finish-button {
+  border-color: var(--signal) !important;
+  background: rgba(255, 77, 0, 0.14) !important;
+}
+
+#finish-button:hover:not(:disabled) {
+  background: rgba(255, 77, 0, 0.24) !important;
+}
+
+#doom-controls kbd {
+  display: block;
+  margin-top: 3px;
+  font: inherit;
+  font-size: 8px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  padding: 0 3px;
+}
+
+#doom-metrics {
+  font-size: 8px;
+  line-height: 1.35;
+  color: var(--ok);
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--line);
+  padding: 4px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+#doom-hud-status {
+  font-size: 9px;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+  color: var(--dim);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Debug log ---------- */
+
+#doom-log {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  display: none;
+  margin: 0;
+  padding: 8px 12px;
+  max-height: 30dvh;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+  background: #000;
+  color: var(--dim);
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+body.is-debug #doom-metrics {
+  display: block;
+}
+
+/* Geometry report. Lives in the rail so it never covers the game. */
+#doom-metrics {
+  display: none;
+  font-size: 8px;
+  line-height: 1.45;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+  margin-top: auto;
+}
+
+#doom-metrics + #doom-hud-status {
+  margin-top: 0;
+}
+
+body.log-visible #doom-log {
+  display: block;
+}
+
+/* Debug: outline the exact box the game is drawn into. If the picture does not
+   fill this outline, the engine bitmap is offset inside the canvas rather than
+   the canvas being misplaced. */
+body.is-debug #canvas,
+body.is-debug #doom-canvas,
+body.is-debug .doom-canvas {
+  outline: 1px solid var(--signal);
+  outline-offset: 0;
+}
+
+@media (max-width: 1080px) {
+  :root {
+    --rail-left: 104px;
+    --rail-right: 104px;
+  }
+
+  #doom-timer {
+    font-size: 18px;
+  }
+}
+
+@media (max-height: 560px) {
+  #doom-timer {
+    font-size: 17px;
+  }
+
+  #doom-controls button {
+    padding: 6px 4px;
+  }
+}

@@ -155,7 +155,11 @@ export const SnakeCanvas: React.FC<SnakeCanvasProps> = ({
         }
       }
 
-      if (e.code === "KeyF" && !(e.target instanceof HTMLInputElement)) {
+      if (
+        e.code === "KeyF" &&
+        !isFullscreen &&
+        !(e.target instanceof HTMLInputElement)
+      ) {
         onToggleFocus();
         return;
       }
@@ -167,6 +171,7 @@ export const SnakeCanvas: React.FC<SnakeCanvasProps> = ({
         if (document.fullscreenElement) {
           document.exitFullscreen().catch(() => {});
         }
+        setIsFullscreen(false);
         return;
       }
 
@@ -197,6 +202,7 @@ export const SnakeCanvas: React.FC<SnakeCanvasProps> = ({
     resetGame,
     onToggleFocus,
     isFocusMode,
+    isFullscreen,
     statusRef,
   ]);
 
@@ -224,6 +230,18 @@ export const SnakeCanvas: React.FC<SnakeCanvasProps> = ({
     return () =>
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
+
+  // Safety net for browsers that don't reliably emit fullscreenchange when
+  // the user exits via the browser UI or OS shortcut.
+  useEffect(() => {
+    if (!isFullscreen) return;
+
+    const interval = window.setInterval(() => {
+      if (!document.fullscreenElement) setIsFullscreen(false);
+    }, 300);
+
+    return () => window.clearInterval(interval);
+  }, [isFullscreen]);
 
   // Fixed deterministic tick loop.
   useEffect(() => {
@@ -498,26 +516,30 @@ export const SnakeCanvas: React.FC<SnakeCanvasProps> = ({
           <span className="keycap">Enter</span>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <button
-            type="button"
-            className={`action-pill-btn ${isFocusMode ? "active" : ""}`}
-            onClick={onToggleFocus}
-            title="Focus / Pop-up mode (mute background)"
-          >
-            <span>{isFocusMode ? "Exit Focus" : "Focus Mode"}</span>
-            <span className="keycap" style={{ fontSize: "10px" }}>
-              F
-            </span>
-          </button>
+        <div className="arena-control-group">
+          {!isFullscreen && (
+            <button
+              type="button"
+              className={`arena-focus-btn ${isFocusMode ? "active" : ""}`}
+              onClick={onToggleFocus}
+              title="Focus / Pop-up mode (mute background)"
+            >
+              <span>{isFocusMode ? "Exit focus" : "Focus mode"}</span>
+              <span className="keycap" style={{ fontSize: "10px" }}>
+                F
+              </span>
+            </button>
+          )}
 
           <button
             type="button"
-            className="action-pill-btn"
+            className={`arena-focus-btn ${isFullscreen ? "active" : ""}`}
             onClick={toggleFullscreen}
+            aria-pressed={isFullscreen}
             title="Toggle native fullscreen"
           >
-            <span>{isFullscreen ? "⛶ Exit Fullscreen" : "⛶ Fullscreen"}</span>
+            <span aria-hidden="true">⛶</span>
+            <span>{isFullscreen ? "Exit fullscreen" : "Fullscreen"}</span>
           </button>
         </div>
       </div>
