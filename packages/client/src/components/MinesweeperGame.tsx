@@ -13,6 +13,9 @@ import { GameShell } from "./GameShell.js";
 import { GameHud } from "./GameHud.js";
 import { ResultOverlay } from "./ResultOverlay.js";
 
+const LONG_PRESS_MS = 420;
+const LONG_PRESS_MOVE_TOLERANCE_PX = 10;
+
 interface MinesweeperGameProps {
   seed: string;
   isFocusMode: boolean;
@@ -43,6 +46,17 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
     stateRef.current = next;
     setState(next);
   }, []);
+
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressOriginRef = useRef<{
+    index: number;
+    x: number;
+    y: number;
+  } | null>(null);
+  const suppressClickRef = useRef<number | null>(null);
+  const longPressHandledRef = useRef<{ index: number; at: number } | null>(
+    null
+  );
 
   const {
     status,
@@ -139,6 +153,77 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
     },
     [now, record, commitState, statusRef]
   );
+
+  const cancelLongPress = useCallback(() => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    longPressOriginRef.current = null;
+  }, []);
+
+  const handleCellClick = useCallback(
+    (index: number, row: number, col: number) => {
+      // A completed long press already toggled a flag; swallow the click it
+      // produces on release so the cell is not revealed as well.
+      if (suppressClickRef.current === index) {
+        suppressClickRef.current = null;
+        return;
+      }
+      handleReveal(row, col);
+    },
+    [handleReveal]
+  );
+
+  const startLongPress = useCallback(
+    (index: number, row: number, col: number, event: React.PointerEvent) => {
+      // Clear any stale suppression from a previous gesture or right-click.
+      suppressClickRef.current = null;
+      longPressHandledRef.current = null;
+
+      if (event.pointerType === "mouse") return;
+
+      cancelLongPress();
+      longPressOriginRef.current = {
+        index,
+        x: event.clientX,
+        y: event.clientY,
+      };
+
+      longPressTimerRef.current = window.setTimeout(() => {
+        longPressTimerRef.current = null;
+        const origin = longPressOriginRef.current;
+        longPressOriginRef.current = null;
+        if (!origin || origin.index !== index) return;
+
+        // The native context menu may have handled this same gesture first.
+        if (suppressClickRef.current === index) return;
+
+        suppressClickRef.current = index;
+        longPressHandledRef.current = { index, at: Date.now() };
+        navigator.vibrate?.(12);
+        handleFlag(row, col);
+      }, LONG_PRESS_MS);
+    },
+    [cancelLongPress, handleFlag]
+  );
+
+  const moveLongPress = useCallback(
+    (event: React.PointerEvent) => {
+      const origin = longPressOriginRef.current;
+      if (!origin) return;
+
+      const dx = event.clientX - origin.x;
+      const dy = event.clientY - origin.y;
+      if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_TOLERANCE_PX) {
+        // The finger is scrolling, not holding.
+        cancelLongPress();
+      }
+    },
+    [cancelLongPress]
+  );
+
+  useEffect(() => cancelLongPress, [cancelLongPress]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -257,11 +342,30 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
                 className={cellClass}
                 aria-label={label}
                 disabled={isFinished || isRevealed}
-                onClick={() => handleReveal(row, col)}
+                onClick={() => handleCellClick(index, row, col)}
                 onContextMenu={(e) => {
                   e.preventDefault();
+                  // Android may emit contextmenu around our long-press timer.
+                  // In either order the flag must be toggled exactly once.
+                  if (suppressClickRef.current === index) return;
+                  const handled = longPressHandledRef.current;
+                  if (
+                    handled &&
+                    handled.index === index &&
+                    Date.now() - handled.at < 1000
+                  ) {
+                    return;
+                  }
+                  suppressClickRef.current = index;
                   handleFlag(row, col);
                 }}
+                onPointerDown={(e) =>
+                  startLongPress(index, row, col, e)
+                }
+                onPointerMove={moveLongPress}
+                onPointerUp={cancelLongPress}
+                onPointerCancel={cancelLongPress}
+                onPointerLeave={cancelLongPress}
               >
                 {content}
               </button>
@@ -300,10 +404,12 @@ export const MinesweeperGame: React.FC<MinesweeperGameProps> = ({
       </div>
 
       <div className="controls-bar" style={{ marginTop: "4px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
           <span className="keycap">Left click</span>
           <span>reveal</span>
           <span className="keycap">Right click</span>
+          <span>or</span>
+          <span className="keycap">Hold</span>
           <span>flag</span>
         </div>
 

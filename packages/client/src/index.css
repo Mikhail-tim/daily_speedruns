@@ -4219,6 +4219,10 @@ body {
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
   transition: background 0.1s ease, transform 0.06s ease;
 }
 
