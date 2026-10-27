@@ -22,6 +22,7 @@ import { SnakeCanvas } from "./components/SnakeCanvas.js";
 import { WordleGame } from "./components/WordleGame.js";
 import { TypingGame } from "./components/TypingGame.js";
 import { Game2048 } from "./components/Game2048.js";
+import { MinesweeperGame } from "./components/MinesweeperGame.js";
 import { MathSprint } from "./components/MathSprint.js";
 import { CaptchaGame } from "./components/CaptchaGame.js";
 import { Leaderboard } from "./components/Leaderboard.js";
@@ -32,7 +33,14 @@ import {
 } from "./components/ArenaPlaceholder.js";
 import { formatTimeMs } from "./lib/storage.js";
 
-type GameId = "captcha" | "math" | "typing" | "wordle" | "snake" | "game2048";
+type GameId =
+  | "captcha"
+  | "math"
+  | "typing"
+  | "wordle"
+  | "snake"
+  | "game2048"
+  | "minesweeper";
 type RailView = "today" | PlaceholderView;
 
 const GAME_RAIL: Array<{
@@ -47,6 +55,7 @@ const GAME_RAIL: Array<{
   { id: "wordle", index: "04", label: "Wordle", meta: "5×6" },
   { id: "snake", index: "05", label: "Snake", meta: "L20" },
   { id: "game2048", index: "06", label: "2048", meta: "512" },
+  { id: "minesweeper", index: "07", label: "Minesweeper", meta: "9×9" },
 ];
 
 const RAIL_NAV: Array<{ id: RailView; index: string; label: string }> = [
@@ -431,9 +440,17 @@ export const App: React.FC = () => {
                       onToggleFocus={() => setIsFocusMode((prev) => !prev)}
                       onRunFinished={handleRunFinished}
                     />
-                  ) : (
+                  ) : selectedGame === "game2048" ? (
                     <Game2048
                       key={`2048-${activeChallenge.seed}`}
+                      seed={activeChallenge.seed}
+                      isFocusMode={isFocusMode}
+                      onToggleFocus={() => setIsFocusMode((prev) => !prev)}
+                      onRunFinished={handleRunFinished}
+                    />
+                  ) : (
+                    <MinesweeperGame
+                      key={`minesweeper-${activeChallenge.seed}`}
                       seed={activeChallenge.seed}
                       isFocusMode={isFocusMode}
                       onToggleFocus={() => setIsFocusMode((prev) => !prev)}

@@ -354,6 +354,7 @@ export default {
         getOrCreateDailyChallenge(env.DB, today, "game2048"),
         getOrCreateDailyChallenge(env.DB, today, "math"),
         getOrCreateDailyChallenge(env.DB, today, "captcha"),
+        getOrCreateDailyChallenge(env.DB, today, "minesweeper"),
       ])
     );
   },

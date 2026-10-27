@@ -41,6 +41,24 @@ npm run captcha:fetch -w packages/client
 
 ---
 
+### 💣 Minesweeper Sprint
+
+Clear a daily 9×9 board with 10 mines. The clock starts on the first click and
+stops when the last of the 71 safe squares is revealed.
+
+- The first click always opens an area: mines are placed only after it, and
+  never under the clicked square or its eight neighbours.
+- Every board is generated to be solvable by logic alone. A layout that would
+  force a coin-flip guess is deterministically re-rolled from the same seed, so
+  the daily board is identical for everyone and has no guess walls.
+- Click or tap a covered square to reveal it. There are no flags; a number counts
+  the mines in the eight surrounding squares.
+- Detonating a mine ends the run. A clean board is replayed against the seed by
+  the server, with minimum-time and click-rate caps, before it reaches the
+  leaderboard.
+
+---
+
 ## 🚀 Getting Started
 
 ### 1. Install dependencies

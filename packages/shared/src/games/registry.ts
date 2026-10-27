@@ -5,6 +5,7 @@ import { TypingGameEngine } from "./typing.js";
 import { Game2048Engine } from "./game2048.js";
 import { MathSprintEngine } from "./math.js";
 import { CaptchaEngine } from "./captcha.js";
+import { MinesweeperEngine } from "./minesweeper.js";
 
 // Global registry of game engines
 const registry = new Map<string, GameEngine<any, any, any>>();
@@ -16,6 +17,7 @@ const typingEngine = new TypingGameEngine();
 const game2048Engine = new Game2048Engine();
 const mathEngine = new MathSprintEngine();
 const captchaEngine = new CaptchaEngine();
+const minesweeperEngine = new MinesweeperEngine();
 
 registry.set(snakeEngine.gameId, snakeEngine);
 registry.set(wordleEngine.gameId, wordleEngine);
@@ -23,6 +25,7 @@ registry.set(typingEngine.gameId, typingEngine);
 registry.set(game2048Engine.gameId, game2048Engine);
 registry.set(mathEngine.gameId, mathEngine);
 registry.set(captchaEngine.gameId, captchaEngine);
+registry.set(minesweeperEngine.gameId, minesweeperEngine);
 
 export function getGameEngine(gameId: string): GameEngine<any, any, any> | undefined {
   return registry.get(gameId);
