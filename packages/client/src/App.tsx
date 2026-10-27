@@ -24,6 +24,7 @@ import { WordleGame } from "./components/WordleGame.js";
 import { TypingGame } from "./components/TypingGame.js";
 import { Game2048 } from "./components/Game2048.js";
 import { MinesweeperGame } from "./components/MinesweeperGame.js";
+import { InvokerGame } from "./components/InvokerGame.js";
 import { MathSprint } from "./components/MathSprint.js";
 import { CaptchaGame } from "./components/CaptchaGame.js";
 import { DoomGame, type DoomSubmitResult } from "./components/DoomGame.js";
@@ -44,7 +45,8 @@ type GameId =
   | "snake"
   | "game2048"
   | "doom"
-  | "minesweeper";
+  | "minesweeper"
+  | "invoker";
 type RailView = "today" | PlaceholderView;
 
 const GAME_RAIL: Array<{
@@ -61,6 +63,7 @@ const GAME_RAIL: Array<{
   { id: "game2048", index: "06", label: "2048", meta: "512" },
   { id: "doom", index: "07", label: "Doom", meta: "E1M1" },
   { id: "minesweeper", index: "08", label: "Minesweeper", meta: "9×9" },
+  { id: "invoker", index: "09", label: "Invoker", meta: "Combos" },
 ];
 
 const RAIL_NAV: Array<{ id: RailView; index: string; label: string }> = [
@@ -549,6 +552,14 @@ export const App: React.FC = () => {
                       onToggleFocus={() => setIsFocusMode((prev) => !prev)}
                       onRunFinished={handleRunFinished}
                     />
+                  ) : selectedGame === "invoker" ? (
+                    <InvokerGame
+                      key={`invoker-${activeChallenge.seed}`}
+                      seed={activeChallenge.seed}
+                      isFocusMode={isFocusMode}
+                      onToggleFocus={() => setIsFocusMode((prev) => !prev)}
+                      onRunFinished={handleRunFinished}
+                    />
                   ) : (
                     <MinesweeperGame
                       key={`minesweeper-${activeChallenge.seed}`}
@@ -584,6 +595,10 @@ export const App: React.FC = () => {
                   {selectedGame === "doom" ? (
                     <p>
                       <kbd>F10</kbd> stop clock <kbd>Esc</kbd> menu
+                    </p>
+                  ) : selectedGame === "invoker" ? (
+                    <p>
+                      <kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd> orbs <kbd>R</kbd> invoke <kbd>D</kbd><kbd>F</kbd> cast
                     </p>
                   ) : (
                     <p>
