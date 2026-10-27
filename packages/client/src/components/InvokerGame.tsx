@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import confetti from "canvas-confetti";
 import {
+  ALL_SPELLS,
+  InvokerAction,
   InvokerGameEngine,
   InvokerState,
-  InvokerAction,
   OrbType,
   SPELL_LIST,
+  SpellDef,
   TimestampedInput,
 } from "@daily-speedruns/shared";
 import { formatTimeMs } from "../lib/storage.js";
@@ -15,11 +17,11 @@ import { GameShell } from "./GameShell.js";
 import { GameHud } from "./GameHud.js";
 import { ResultOverlay } from "./ResultOverlay.js";
 import {
-  QuasIcon,
-  WexIcon,
   ExortIcon,
   InvokeIcon,
+  QuasIcon,
   SpellIcon,
+  WexIcon,
 } from "./invoker-icons.js";
 import { invokerAudio } from "../lib/invoker-audio.js";
 import "./InvokerGame.css";
@@ -38,6 +40,27 @@ interface InvokerGameProps {
   }>;
 }
 
+const ORB_KEYS: OrbType[] = ["Q", "W", "E"];
+const ORB_GLYPHS: Record<OrbType, React.FC<{ size?: number | string }>> = {
+  Q: QuasIcon,
+  W: WexIcon,
+  E: ExortIcon,
+};
+
+const SpellChip: React.FC<{ spell: SpellDef | null; size?: number }> = ({
+  spell,
+  size = 52,
+}) =>
+  spell ? (
+    <SpellIcon id={spell.id} size={size} />
+  ) : (
+    <span
+      className="invoker-chip-empty"
+      style={{ width: size, height: size }}
+      aria-hidden
+    />
+  );
+
 export const InvokerGame: React.FC<InvokerGameProps> = ({
   seed,
   isFocusMode,
@@ -55,9 +78,10 @@ export const InvokerGame: React.FC<InvokerGameProps> = ({
     setState(next);
   }, []);
 
-  const [isErrorShake, setIsErrorShake] = useState<boolean>(false);
-  const [showGrimoire, setShowGrimoire] = useState<boolean>(false);
-  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [shake, setShake] = useState(false);
+  const [showGrimoire, setShowGrimoire] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const railRef = useRef<HTMLOListElement | null>(null);
 
   const {
     status,
@@ -71,14 +95,14 @@ export const InvokerGame: React.FC<InvokerGameProps> = ({
     reset: resetSession,
   } = useGameSession<InvokerAction>({
     onRunFinished,
-    winMessage: "Combo Sprint Verified!",
+    winMessage: "Combo verified!",
     onWin: () => {
       invokerAudio.playWin();
       confetti({
         particleCount: 110,
         spread: 85,
         origin: { y: 0.6 },
-        colors: ["#38bdf8", "#e879f9", "#fb923c", "#fbbf24"],
+        colors: ["#38bdf8", "#d946ef", "#f97316", "#f8fafc"],
       });
     },
   });
@@ -95,7 +119,8 @@ export const InvokerGame: React.FC<InvokerGameProps> = ({
     const fresh = engineRef.current.init(seed);
     stateRef.current = fresh;
     setState(fresh);
-    setIsErrorShake(false);
+    setShake(false);
+    setShowGrimoire(false);
     resetSession();
   }, [seed, resetSession]);
 
@@ -103,115 +128,142 @@ export const InvokerGame: React.FC<InvokerGameProps> = ({
     resetGame();
   }, [resetGame]);
 
+  // Keep the spell being cast centred in the rail. Done by hand so the page
+  // itself never scrolls.
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail) return;
+    const active = rail.querySelector<HTMLElement>(".invoker-token.is-active");
+    if (!active) return;
+    const left = active.offsetLeft - (rail.clientWidth - active.clientWidth) / 2;
+    rail.scrollTo({ left: Math.max(0, left), behavior: "smooth" });
+  }, [state.targetIndex]);
+
   const handleAction = useCallback(
     (action: InvokerAction) => {
-      const curStatus = statusRef.current;
-      if (
-        curStatus === "WON" ||
-        curStatus === "LOST" ||
-        curStatus === "SUBMITTING"
-      ) {
+      const current = statusRef.current;
+      if (current === "WON" || current === "LOST" || current === "SUBMITTING") {
         return;
       }
 
+      // The clock starts on the very first press of the run.
       const t = Math.max(1, begin());
       record(action, t);
 
-      // Play audio feedback
       if (action.type === "ORB") {
         if (action.orb === "Q") invokerAudio.playQuas();
         else if (action.orb === "W") invokerAudio.playWex();
-        else if (action.orb === "E") invokerAudio.playExort();
+        else invokerAudio.playExort();
       } else if (action.type === "INVOKE") {
         invokerAudio.playInvoke();
       }
 
-      const stepRes = engineRef.current.step(stateRef.current, action);
-      commitState(stepRes.state);
+      const result = engineRef.current.step(stateRef.current, action);
+      commitState(result.state);
 
-      if (action.type === "CAST") {
-        if (stepRes.castSuccess) {
-          invokerAudio.playCastSuccess();
-          setIsErrorShake(false);
-          if (stepRes.win) {
-            submit(t);
-          }
-        } else {
-          invokerAudio.playMistake();
-          setIsErrorShake(true);
-          window.setTimeout(() => setIsErrorShake(false), 300);
-        }
+      if (action.type !== "CAST") return;
+
+      if (result.castSuccess) {
+        invokerAudio.playCastSuccess();
+        setShake(false);
+        if (result.win) submit(t);
+      } else {
+        invokerAudio.playMistake();
+        setShake(true);
+        window.setTimeout(() => setShake(false), 320);
       }
     },
-    [begin, record, commitState, submit]
+    [begin, commitState, record, submit, statusRef]
   );
 
-  // Global Keyboard Handler
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
+    const onKeyDown = (event: KeyboardEvent) => {
       if (isGameInputLocked()) return;
-      if (e.repeat) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
 
-      const key = e.key.toLowerCase();
+      const code = event.code;
+      const finished =
+        statusRef.current === "WON" || statusRef.current === "LOST";
 
-      // Space or Enter to confirm ready / start
+      if (finished) {
+        if (code === "Space" || code === "Enter" || code === "KeyR") {
+          event.preventDefault();
+          resetGame();
+        }
+        return;
+      }
+
       if (statusRef.current === "IDLE") {
-        if (e.key === " " || e.key === "Enter") {
-          e.preventDefault();
+        if (code === "Space" || code === "Enter") {
+          event.preventDefault();
           begin();
           return;
         }
       }
 
-      if (statusRef.current === "PLAYING" || statusRef.current === "IDLE") {
-        if (key === "q") {
-          e.preventDefault();
+      switch (code) {
+        case "KeyQ":
+          event.preventDefault();
           handleAction({ type: "ORB", orb: "Q" });
-        } else if (key === "w") {
-          e.preventDefault();
+          break;
+        case "KeyW":
+          event.preventDefault();
           handleAction({ type: "ORB", orb: "W" });
-        } else if (key === "e") {
-          e.preventDefault();
+          break;
+        case "KeyE":
+          event.preventDefault();
           handleAction({ type: "ORB", orb: "E" });
-        } else if (key === "r") {
-          e.preventDefault();
+          break;
+        case "KeyR":
+          event.preventDefault();
           handleAction({ type: "INVOKE" });
-        } else if (key === "d") {
-          e.preventDefault();
+          break;
+        case "KeyD":
+          event.preventDefault();
           handleAction({ type: "CAST", slot: "D" });
-        } else if (key === "f") {
-          e.preventDefault();
-          handleAction({ type: "CAST", slot: "F" });
-        }
+          break;
+        case "KeyF":
+          if (event.target instanceof HTMLInputElement) return;
+          event.preventDefault();
+          if (statusRef.current === "PLAYING") {
+            handleAction({ type: "CAST", slot: "F" });
+          } else {
+            onToggleFocus();
+          }
+          break;
+        default:
+          break;
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [begin, handleAction]);
+  }, [begin, handleAction, onToggleFocus, resetGame, statusRef]);
 
-  const currentTarget = state.sequence[state.targetIndex] ?? null;
-  const isTargetInSlotD = currentTarget && state.slotD?.id === currentTarget.id;
-  const isTargetInSlotF = currentTarget && state.slotF?.id === currentTarget.id;
+  const target = state.sequence[state.targetIndex] ?? null;
+  const targetInD = Boolean(target && state.slotD?.id === target.id);
+  const targetInF = Boolean(target && state.slotF?.id === target.id);
+
+  const hint = !target
+    ? ""
+    : targetInD
+      ? "Ready in slot D — press D"
+      : targetInF
+        ? "Ready in slot F — press F"
+        : `Press ${target.recipe.join(" ")} then R`;
 
   return (
     <GameShell className="invoker-card">
       <GameHud
         stats={[
           {
-            label: "Combo",
-            value: state.comboName,
-            tone: "highlight",
-          },
-          {
             label: "Progress",
             value: `${state.targetIndex} / ${state.sequence.length}`,
-            align: "center",
             tone: "highlight",
           },
           {
             label: "Mistakes",
-            value: state.mistakes,
+            value: `${state.mistakes}`,
             align: "center",
             tone: state.mistakes > 0 ? "danger" : "default",
           },
@@ -224,335 +276,185 @@ export const InvokerGame: React.FC<InvokerGameProps> = ({
         ]}
       />
 
-      <div className={`invoker-container ${isErrorShake ? "shake" : ""}`}>
-        <div className="invoker-backdrop" />
+      <div className={`invoker-stage${shake ? " is-error" : ""}`}>
+        <div className="invoker-stage-head">
+          <div className="invoker-stage-title">
+            <span className="invoker-eyebrow">Today&apos;s combo</span>
+            <strong>{state.comboName}</strong>
+          </div>
+          <span className="invoker-stage-count">
+            {state.targetIndex}/{state.sequence.length} cast
+          </span>
+        </div>
 
-        {/* Ready Confirmation Overlay */}
-        {status === "IDLE" && (
-          <div className="invoker-ready-overlay">
-            <div className="invoker-ready-card">
-              <span className="invoker-badge">Daily Speedrun</span>
-              <h2 className="invoker-ready-title">Invoker Combo Sprint</h2>
-              <p className="invoker-ready-desc">
-                Today&apos;s Challenge: <strong>{state.comboName}</strong>
-                <br />
-                Assemble your reagents with <code>Q</code>, <code>W</code>, <code>E</code>.
-                Invoke with <code>R</code> into slot <code>D</code>/<code>F</code>, then cast to execute the sequence!
-              </p>
-
-              <button
-                type="button"
-                className="invoker-ready-btn"
-                onClick={() => begin()}
+        <ol className="invoker-rail" ref={railRef} aria-label="Spells to cast in order">
+          {state.sequence.map((spell, index) => {
+            const done = index < state.targetIndex;
+            const active = index === state.targetIndex;
+            return (
+              <li
+                key={`${spell.id}-${index}`}
+                className={`invoker-token${done ? " is-done" : ""}${
+                  active ? " is-active" : ""
+                }`}
+                aria-current={active ? "step" : undefined}
               >
-                <span>⚡ I Am Ready — Start Sprint</span>
-              </button>
+                <span className="invoker-token-index">{index + 1}</span>
+                <SpellIcon id={spell.id} size={40} />
+                <span className="invoker-token-name">{spell.name}</span>
+              </li>
+            );
+          })}
+        </ol>
 
-              <div className="invoker-ready-keys-hint">
-                <span>[Q] Quas</span>
-                <span>[W] Wex</span>
-                <span>[E] Exort</span>
-                <span>[R] Invoke</span>
-                <span>[D/F] Cast</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Stage Header */}
-        <div className="invoker-header">
-          <div className="invoker-title-box">
-            <span className="invoker-badge">Combo</span>
-            <span className="invoker-combo-name">{state.comboName}</span>
-          </div>
-          <div className="invoker-stats-rail">
-            <div className="invoker-stat-item">
-              <span>Progress:</span>
-              <span className="invoker-stat-val">
-                {state.targetIndex} / {state.sequence.length}
+        <div className="invoker-target" data-empty={target ? undefined : "true"}>
+          <div className="invoker-target-main">
+            <SpellChip spell={target} size={60} />
+            <div className="invoker-target-text">
+              <span className="invoker-eyebrow">
+                {target ? `Spell ${state.targetIndex + 1}` : "Combo complete"}
               </span>
+              <strong className="invoker-target-name">
+                {target ? target.name : "All spells cast"}
+              </strong>
+              <span className="invoker-target-hint">{hint}</span>
             </div>
-            {state.mistakes > 0 && (
-              <div className="invoker-stat-item">
-                <span style={{ color: "#ef4444" }}>Mistakes:</span>
-                <span className="invoker-stat-val" style={{ color: "#f87171" }}>
-                  {state.mistakes}
-                </span>
-              </div>
-            )}
           </div>
-        </div>
 
-        {/* Target Combo Rail */}
-        <div className="invoker-combo-rail-wrapper">
-          <div className="invoker-rail-label">
-            <span>Combo String</span>
-            <span>{Math.round((state.targetIndex / state.sequence.length) * 100)}%</span>
-          </div>
-          <div className="invoker-spells-scroll">
-            {state.sequence.map((spell, idx) => {
-              const isDone = idx < state.targetIndex;
-              const isActive = idx === state.targetIndex;
-              return (
-                <div
-                  key={`${spell.id}-${idx}`}
-                  className={`invoker-spell-token ${isDone ? "done" : ""} ${
-                    isActive ? "active" : ""
-                  }`}
-                >
-                  <span className="invoker-token-idx">#{idx + 1}</span>
-                  <SpellIcon id={spell.id} size={22} />
-                  <span className="invoker-token-name">{spell.name}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Center Target Arena */}
-        <div className="invoker-stage">
-          {currentTarget && (
-            <div className="invoker-target-card">
-              <div className="invoker-target-icon-wrap">
-                <SpellIcon id={currentTarget.id} size={72} />
-              </div>
-
-              <div className="invoker-target-title">{currentTarget.name}</div>
-
-              <div className="invoker-target-recipe">
-                {currentTarget.recipe.map((orb, i) => (
-                  <span key={i} className={`invoker-recipe-orb ${orb}`}>
-                    {orb}
+          {target && (
+            <div className="invoker-recipe" aria-label="Required orbs">
+              {target.recipe.map((orb, index) => {
+                const Glyph = ORB_GLYPHS[orb];
+                return (
+                  <span className={`invoker-recipe-orb orb-${orb}`} key={index}>
+                    <Glyph size={26} />
+                    <span>{orb}</span>
                   </span>
-                ))}
-                <span style={{ color: "#64748b", margin: "0 2px" }}>+</span>
-                <span
-                  className="invoker-recipe-orb"
-                  style={{
-                    background: "rgba(245, 158, 11, 0.2)",
-                    border: "1px solid #fbbf24",
-                    color: "#fef08a",
-                  }}
-                >
-                  R
-                </span>
-              </div>
-
-              {/* Action Coaching Badge */}
-              {isTargetInSlotD ? (
-                <div className="invoker-action-hint ready-d">
-                  ⚡ Ready in Slot D — Press [D]
-                </div>
-              ) : isTargetInSlotF ? (
-                <div className="invoker-action-hint ready-f">
-                  ⚡ Ready in Slot F — Press [F]
-                </div>
-              ) : (
-                <div className="invoker-action-hint need-invoke">
-                  Invoke with {currentTarget.recipe.join("-")}-R
-                </div>
-              )}
+                );
+              })}
+              <span className="invoker-recipe-plus">+</span>
+              <span className="invoker-recipe-orb orb-invoke">
+                <InvokeIcon size={26} />
+                <span>R</span>
+              </span>
             </div>
           )}
         </div>
 
-        {/* AUTHENTIC DOTA 2 INVOKER HUD (BOTTOM) */}
-        <div className="invoker-hud-wrap">
-          {/* Active 3 Spheres */}
-          <div className="invoker-spheres-tray">
-            {[0, 1, 2].map((idx) => {
-              const orb = state.orbs[idx] as OrbType | undefined;
+        <div className="invoker-hud">
+          <div className="invoker-tray-group">
+            <span className="invoker-eyebrow">Loaded</span>
+            <div className="invoker-tray" aria-label="Active orbs">
+              {[0, 1, 2].map((slot) => {
+                const orb = state.orbs[slot];
+                const Glyph = orb ? ORB_GLYPHS[orb] : null;
+                return (
+                  <span
+                    key={slot}
+                    className={`invoker-tray-slot${orb ? ` orb-${orb}` : ""}`}
+                  >
+                    {Glyph ? <Glyph size={30} /> : null}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="invoker-keys">
+            {ORB_KEYS.map((orb) => {
+              const Glyph = ORB_GLYPHS[orb];
               return (
-                <div
-                  key={idx}
-                  className={`invoker-sphere-slot ${orb ? `has-orb ${orb}` : ""}`}
+                <button
+                  key={orb}
+                  type="button"
+                  className={`invoker-btn orb-${orb}`}
+                  onClick={() => handleAction({ type: "ORB", orb })}
+                  title={`${orb} orb`}
                 >
-                  {orb === "Q" && <QuasIcon size={32} />}
-                  {orb === "W" && <WexIcon size={32} />}
-                  {orb === "E" && <ExortIcon size={32} />}
-                </div>
+                  <Glyph size={38} />
+                  <kbd className="invoker-key">{orb}</kbd>
+                </button>
               );
             })}
-          </div>
 
-          {/* Abilities Bar */}
-          <div className="invoker-ability-console">
-            {/* [Q] Quas */}
+            <span className="invoker-sep" aria-hidden />
+
             <button
               type="button"
-              className="invoker-hud-btn quas"
-              onClick={() => handleAction({ type: "ORB", orb: "Q" })}
-              title="Quas [Q]"
-            >
-              <QuasIcon size={46} />
-              <span className="invoker-keycap">Q</span>
-            </button>
-
-            {/* [W] Wex */}
-            <button
-              type="button"
-              className="invoker-hud-btn wex"
-              onClick={() => handleAction({ type: "ORB", orb: "W" })}
-              title="Wex [W]"
-            >
-              <WexIcon size={46} />
-              <span className="invoker-keycap">W</span>
-            </button>
-
-            {/* [E] Exort */}
-            <button
-              type="button"
-              className="invoker-hud-btn exort"
-              onClick={() => handleAction({ type: "ORB", orb: "E" })}
-              title="Exort [E]"
-            >
-              <ExortIcon size={46} />
-              <span className="invoker-keycap">E</span>
-            </button>
-
-            <div className="invoker-ability-sep" />
-
-            {/* [D] Slot 1 */}
-            <button
-              type="button"
-              className={`invoker-hud-btn slot ${
-                state.slotD ? "" : "empty-slot"
-              } ${isTargetInSlotD ? "highlight" : ""}`}
+              className={`invoker-slot${targetInD ? " is-target" : ""}`}
               onClick={() => handleAction({ type: "CAST", slot: "D" })}
-              disabled={!state.slotD}
-              title={state.slotD ? `Cast ${state.slotD.name} [D]` : "Slot D (Empty)"}
+              title={state.slotD ? `Cast ${state.slotD.name}` : "Slot D is empty"}
             >
-              {state.slotD ? (
-                <>
-                  <SpellIcon id={state.slotD.id} size={48} />
-                  <span className="invoker-slot-name">{state.slotD.name}</span>
-                </>
-              ) : (
-                <span className="invoker-empty-label">Empty</span>
-              )}
-              <span className="invoker-keycap">D</span>
+              <SpellChip spell={state.slotD} size={46} />
+              <span className="invoker-slot-label">
+                {state.slotD?.name ?? "Empty"}
+              </span>
+              <kbd className="invoker-key">D</kbd>
             </button>
 
-            {/* [F] Slot 2 */}
             <button
               type="button"
-              className={`invoker-hud-btn slot ${
-                state.slotF ? "" : "empty-slot"
-              } ${isTargetInSlotF ? "highlight" : ""}`}
+              className={`invoker-slot${targetInF ? " is-target" : ""}`}
               onClick={() => handleAction({ type: "CAST", slot: "F" })}
-              disabled={!state.slotF}
-              title={state.slotF ? `Cast ${state.slotF.name} [F]` : "Slot F (Empty)"}
+              title={state.slotF ? `Cast ${state.slotF.name}` : "Slot F is empty"}
             >
-              {state.slotF ? (
-                <>
-                  <SpellIcon id={state.slotF.id} size={48} />
-                  <span className="invoker-slot-name">{state.slotF.name}</span>
-                </>
-              ) : (
-                <span className="invoker-empty-label">Empty</span>
-              )}
-              <span className="invoker-keycap">F</span>
+              <SpellChip spell={state.slotF} size={46} />
+              <span className="invoker-slot-label">
+                {state.slotF?.name ?? "Empty"}
+              </span>
+              <kbd className="invoker-key">F</kbd>
             </button>
 
-            <div className="invoker-ability-sep" />
+            <span className="invoker-sep" aria-hidden />
 
-            {/* [R] Invoke */}
             <button
               type="button"
-              className="invoker-hud-btn invoke"
+              className="invoker-btn invoker-btn-invoke"
               onClick={() => handleAction({ type: "INVOKE" })}
-              title="Invoke [R]"
+              title="Invoke the current orbs"
             >
-              <InvokeIcon size={46} />
-              <span className="invoker-keycap">R</span>
+              <InvokeIcon size={38} />
+              <kbd className="invoker-key">R</kbd>
             </button>
-          </div>
-
-          {/* Utility Bar */}
-          <div className="invoker-utility-bar">
-            <button
-              type="button"
-              className="invoker-util-btn"
-              onClick={() => setShowGrimoire(true)}
-            >
-              📖 Grimoire (All Recipes)
-            </button>
-            <button
-              type="button"
-              className="invoker-util-btn"
-              onClick={toggleSound}
-              title="Toggle sound"
-            >
-              {soundEnabled ? "🔊 Sound On" : "🔇 Muted"}
-            </button>
-            <span style={{ fontSize: "0.68rem", color: "#64748b" }}>
-              Hotkeys: [Q] [W] [E] [R] [D] [F]
-            </span>
           </div>
         </div>
 
-        {/* Grimoire Modal */}
-        {showGrimoire && (
-          <div
-            className="invoker-grimoire-overlay"
-            onClick={() => setShowGrimoire(false)}
-          >
-            <div
-              className="invoker-grimoire-box"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="invoker-grimoire-header">
-                <span className="invoker-grimoire-title">
-                  Archmage&apos;s Grimoire — All 10 Recipes
-                </span>
-                <button
-                  type="button"
-                  className="invoker-util-btn"
-                  onClick={() => setShowGrimoire(false)}
-                >
-                  ✕ Close
-                </button>
-              </div>
-
-              <div className="invoker-grimoire-grid">
-                {SPELL_LIST.map((sp) => (
-                  <div key={sp.id} className="invoker-grimoire-item">
-                    <SpellIcon id={sp.id} size={40} />
-                    <div className="invoker-grimoire-info">
-                      <span className="invoker-grimoire-name">{sp.name}</span>
-                      <div className="invoker-target-recipe">
-                        {sp.recipe.map((orb, i) => (
-                          <span
-                            key={i}
-                            className={`invoker-recipe-orb ${orb}`}
-                            style={{ width: "18px", height: "18px", fontSize: "0.65rem" }}
-                          >
-                            {orb}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+        {status === "IDLE" && (
+          <div className="canvas-overlay invoker-overlay">
+            <h3 className="overlay-title">Ready?</h3>
+            <p className="overlay-subtitle">
+              Cast <strong>{state.comboName}</strong> — {state.sequence.length}{" "}
+              spells in order.
+              <br />
+              Press <kbd className="keycap">Q</kbd>{" "}
+              <kbd className="keycap">W</kbd> <kbd className="keycap">E</kbd>{" "}
+              to load orbs, <kbd className="keycap">R</kbd> to invoke,{" "}
+              <kbd className="keycap">D</kbd> / <kbd className="keycap">F</kbd>{" "}
+              to cast.
+            </p>
+            <button className="btn-primary" onClick={() => begin()}>
+              Start combo
+              <kbd className="keycap overlay-keycap">Space</kbd>
+            </button>
           </div>
+        )}
+
+        {status === "SUBMITTING" && (
+          <ResultOverlay
+            variant="submitting"
+            title="Combo complete!"
+            message="Verifying the keypress stream with the server engine..."
+          />
         )}
 
         {status === "WON" && (
           <ResultOverlay
             variant="win"
-            title="Combo Verified!"
+            title="Combo Verified"
             timeMs={elapsedMs}
             stats={[
-              {
-                label: "Combo",
-                value: state.comboName,
-              },
-              {
-                label: "Total Keypresses",
-                value: state.totalKeypresses,
-              },
+              { label: "Combo", value: state.comboName },
+              { label: "Keypresses", value: state.totalKeypresses },
               {
                 label: "Mistakes",
                 value: state.mistakes,
@@ -562,23 +464,61 @@ export const InvokerGame: React.FC<InvokerGameProps> = ({
             rank={rank}
             message={resultMessage}
             onRetry={resetGame}
+            retryLabel="Run it again"
           />
         )}
 
         {status === "LOST" && (
           <ResultOverlay
             variant="lost"
-            title="Sprint Failed"
+            title="Run rejected"
             message={resultMessage}
             onRetry={resetGame}
-            retryLabel="Try Again"
+            retryLabel="Try again"
           />
+        )}
+
+        {showGrimoire && (
+          <div
+            className="invoker-grimoire"
+            role="dialog"
+            aria-label="All spell recipes"
+            onClick={() => setShowGrimoire(false)}
+          >
+            <div
+              className="invoker-grimoire-box"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="invoker-grimoire-head">
+                <span className="invoker-eyebrow">Recipe book</span>
+                <button
+                  type="button"
+                  className="invoker-link"
+                  onClick={() => setShowGrimoire(false)}
+                >
+                  Close ✕
+                </button>
+              </div>
+              <div className="invoker-grimoire-grid">
+                {SPELL_LIST.map((spell) => (
+                  <div className="invoker-grimoire-item" key={spell.id}>
+                    <SpellIcon id={spell.id} size={40} />
+                    <div>
+                      <strong>{spell.name}</strong>
+                      <span className="invoker-grimoire-recipe">
+                        {spell.recipe.join(" · ")} + R
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         )}
       </div>
 
-      <div className="controls-bar" style={{ marginTop: "8px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span>Press</span>
+      <div className="controls-bar invoker-controls">
+        <div className="invoker-controls-keys">
           <span className="keycap">Q</span>
           <span className="keycap">W</span>
           <span className="keycap">E</span>
@@ -590,18 +530,33 @@ export const InvokerGame: React.FC<InvokerGameProps> = ({
           <span>cast</span>
         </div>
 
-        <button
-          type="button"
-          className={`action-pill-btn ${isFocusMode ? "active" : ""}`}
-          onClick={onToggleFocus}
-          title="Focus / Pop-up mode"
-        >
-          <span>{isFocusMode ? "Exit Focus" : "Focus Mode"}</span>
-          <span className="keycap" style={{ fontSize: "10px" }}>
-            F
-          </span>
-        </button>
+        <div className="invoker-controls-actions">
+          <button
+            type="button"
+            className="invoker-link"
+            onClick={() => setShowGrimoire(true)}
+          >
+            Recipes
+          </button>
+          <button type="button" className="invoker-link" onClick={toggleSound}>
+            {soundEnabled ? "Sound on" : "Sound off"}
+          </button>
+          <button
+            type="button"
+            className={`action-pill-btn${isFocusMode ? " active" : ""}`}
+            onClick={onToggleFocus}
+            title="Focus / pop-up mode"
+          >
+            <span>{isFocusMode ? "Exit Focus" : "Focus Mode"}</span>
+            <span className="keycap" style={{ fontSize: 10 }}>
+              F
+            </span>
+          </button>
+        </div>
       </div>
     </GameShell>
   );
 };
+
+// Kept for the recipe hint text in tests/tools that import the spell table.
+export const INVOKER_SPELLS = ALL_SPELLS;

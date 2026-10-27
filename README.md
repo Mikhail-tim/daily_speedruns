@@ -145,7 +145,7 @@ stops when the last of the 71 safe squares is revealed.
 
 ---
 
-### � Frog Cross: River Run
+### 🐸 Frog Cross: River Run
 
 Guide a glowing dark-green frog across five lanes of night traffic, ride the
 river, and fill all five homes as fast as possible.
@@ -167,6 +167,29 @@ river, and fill all five homes as fast as possible.
 - A clean run is replayed against the daily seed by the server.
 
 ---
+
+---
+
+### 🌀 Invoker Combo Sprint
+
+Load orbs, invoke, cast. Ten Invoker spells, one order, one clock.
+
+- **Daily combo:** each seed draws a curated competitive line (Tornado opener,
+  Eul's one-shot, control and mana burn...) and deterministically shuffles its
+  middle, so every day reads differently.
+- **Real orb rules:** `Q` Quas, `W` Wex and `E` Exort fill the last three orb
+  slots. `R` invokes into slot `D`, the previous spell slides to `F`, and
+  `D`/`F` cast. Invoking a spell that is already slotted swaps the slots.
+- **Only the right cast counts.** Casting the wrong (or an empty) slot is a
+  mistake, and mistakes are reported on the result card.
+- **Dota-style HUD:** three orb slots, the three reagents, both spell slots and
+  the invoke sigil are all clickable, with a recipe book listing all ten
+  combinations.
+- **Original art and audio:** every icon is hand-drawn SVG tinted by the orbs in
+  its recipe, and the orb sounds are synthesised with WebAudio — no game assets.
+- Replay verified: the server replays the key stream, rejects runs under one
+  second, and requires the last correct cast to match the claimed time within
+  600 ms.
 
 ## 🚀 Getting Started
 

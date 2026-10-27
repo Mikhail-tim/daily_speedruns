@@ -1,265 +1,366 @@
-import React from "react";
-import { SpellId } from "@daily-speedruns/shared";
+import React, { useId } from "react";
+import { OrbType, SpellId, ALL_SPELLS } from "@daily-speedruns/shared";
+
+/**
+ * Invoker-icon set.
+ *
+ * Every icon is original vector art drawn to read at 22 px (combo rail) up to
+ * 72 px (active target). Each spell tile is tinted by the orbs in its recipe,
+ * so the colour of a tile tells you what to press: blue = Quas, magenta = Wex,
+ * orange = Exort, and mixes fade between them.
+ */
+
+const ELEMENTS: Record<
+  OrbType,
+  { light: string; mid: string; deep: string; glow: string }
+> = {
+  Q: { light: "#bae6fd", mid: "#38bdf8", deep: "#082f49", glow: "#0ea5e9" },
+  W: { light: "#f5d0fe", mid: "#d946ef", deep: "#2a0242", glow: "#a855f7" },
+  E: { light: "#fed7aa", mid: "#f97316", deep: "#3b0a05", glow: "#ef4444" },
+};
+
+function orbMix(recipe: readonly OrbType[]) {
+  const counts: Record<OrbType, number> = { Q: 0, W: 0, E: 0 };
+  for (const orb of recipe) counts[orb]++;
+  // Dominant element decides the tile colour; ties blend.
+  const ranked = (Object.keys(counts) as OrbType[]).sort(
+    (a, b) => counts[b] - counts[a]
+  );
+  return { primary: ranked[0], secondary: ranked[1], counts };
+}
 
 interface IconProps {
   size?: number | string;
   className?: string;
   style?: React.CSSProperties;
+  title?: string;
 }
 
-export const QuasIcon: React.FC<IconProps> = ({ size = 48, className, style }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 64 64"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    className={className}
-    style={style}
-  >
-    <defs>
-      <radialGradient id="quas-glow" cx="50%" cy="50%" r="50%">
-        <stop offset="0%" stopColor="#cffafe" />
-        <stop offset="40%" stopColor="#38bdf8" />
-        <stop offset="85%" stopColor="#0284c7" />
-        <stop offset="100%" stopColor="#0369a1" />
-      </radialGradient>
-      <filter id="quas-blur" x="-20%" y="-20%" width="140%" height="140%">
-        <feGaussianBlur stdDeviation="3" result="blur" />
-        <feComposite in="SourceGraphic" in2="blur" operator="over" />
-      </filter>
-    </defs>
-    <circle cx="32" cy="32" r="28" fill="#082f49" stroke="#38bdf8" strokeWidth="2" />
-    <circle cx="32" cy="32" r="24" fill="url(#quas-glow)" filter="url(#quas-blur)" />
-    {/* Ice Crystal Shards */}
-    <path
-      d="M32 14L36 26L48 30L38 36L40 48L32 40L24 48L26 36L16 30L28 26Z"
-      fill="#ffffff"
-      opacity="0.85"
-    />
-    <circle cx="28" cy="26" r="3" fill="#ffffff" opacity="0.9" />
-  </svg>
+/* ------------------------------------------------------------------ orbs */
+
+const OrbBase: React.FC<
+  IconProps & { kind: OrbType; glyph: React.ReactNode }
+> = ({ kind, glyph, size = 48, className, style, title }) => {
+  const uid = useId().replace(/:/g, "");
+  const el = ELEMENTS[kind];
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 64 64"
+      fill="none"
+      className={className}
+      style={style}
+      role="img"
+      aria-label={title}
+    >
+      <defs>
+        <radialGradient id={`orb-${uid}`} cx="38%" cy="30%" r="72%">
+          <stop offset="0%" stopColor={el.light} />
+          <stop offset="45%" stopColor={el.mid} />
+          <stop offset="100%" stopColor={el.deep} />
+        </radialGradient>
+        <radialGradient id={`orb-glow-${uid}`} cx="50%" cy="50%" r="50%">
+          <stop offset="60%" stopColor={el.glow} stopOpacity="0.55" />
+          <stop offset="100%" stopColor={el.glow} stopOpacity="0" />
+        </radialGradient>
+      </defs>
+      <circle cx="32" cy="32" r="30" fill={`url(#orb-glow-${uid})`} />
+      <circle cx="32" cy="32" r="25" fill={`url(#orb-${uid})`} />
+      <circle
+        cx="32"
+        cy="32"
+        r="25"
+        stroke={el.light}
+        strokeOpacity="0.55"
+        strokeWidth="1.5"
+      />
+      <ellipse
+        cx="24"
+        cy="20"
+        rx="9"
+        ry="6"
+        fill="#ffffff"
+        opacity="0.28"
+        transform="rotate(-25 24 20)"
+      />
+      <g>{glyph}</g>
+    </svg>
+  );
+};
+
+export const QuasIcon: React.FC<IconProps> = (props) => (
+  <OrbBase
+    kind="Q"
+    title="Quas"
+    {...props}
+    glyph={
+      <g stroke="#f0f9ff" strokeWidth="2.4" strokeLinecap="round">
+        <path d="M32 18v28M19 25l26 14M45 25L19 39" />
+        <path d="M32 18l4 5M32 18l-4 5M32 46l4-5M32 46l-4-5" />
+        <circle cx="32" cy="32" r="3.4" fill="#f0f9ff" stroke="none" />
+      </g>
+    }
+  />
 );
 
-export const WexIcon: React.FC<IconProps> = ({ size = 48, className, style }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 64 64"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    className={className}
-    style={style}
-  >
-    <defs>
-      <radialGradient id="wex-glow" cx="50%" cy="50%" r="50%">
-        <stop offset="0%" stopColor="#fdf4ff" />
-        <stop offset="35%" stopColor="#e879f9" />
-        <stop offset="80%" stopColor="#c026d3" />
-        <stop offset="100%" stopColor="#701a75" />
-      </radialGradient>
-      <filter id="wex-blur" x="-20%" y="-20%" width="140%" height="140%">
-        <feGaussianBlur stdDeviation="3" result="blur" />
-        <feComposite in="SourceGraphic" in2="blur" operator="over" />
-      </filter>
-    </defs>
-    <circle cx="32" cy="32" r="28" fill="#3b0764" stroke="#e879f9" strokeWidth="2" />
-    <circle cx="32" cy="32" r="24" fill="url(#wex-glow)" filter="url(#wex-blur)" />
-    {/* Storm Lightning Bolt */}
-    <path
-      d="M35 12L20 32H32L27 52L44 28H31L35 12Z"
-      fill="#ffffff"
-      opacity="0.9"
-    />
-    <circle cx="36" cy="24" r="2.5" fill="#ffffff" opacity="0.95" />
-  </svg>
+export const WexIcon: React.FC<IconProps> = (props) => (
+  <OrbBase
+    kind="W"
+    title="Wex"
+    {...props}
+    glyph={
+      <g>
+        <path
+          d="M35 17L23 35h8l-3 12 13-19h-9l3-11z"
+          fill="#fdf4ff"
+          stroke="#fdf4ff"
+          strokeWidth="1.2"
+          strokeLinejoin="round"
+        />
+      </g>
+    }
+  />
 );
 
-export const ExortIcon: React.FC<IconProps> = ({ size = 48, className, style }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 64 64"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    className={className}
-    style={style}
-  >
-    <defs>
-      <radialGradient id="exort-glow" cx="50%" cy="50%" r="50%">
-        <stop offset="0%" stopColor="#fffbeb" />
-        <stop offset="35%" stopColor="#f59e0b" />
-        <stop offset="75%" stopColor="#dc2626" />
-        <stop offset="100%" stopColor="#7f1d1d" />
-      </radialGradient>
-      <filter id="exort-blur" x="-20%" y="-20%" width="140%" height="140%">
-        <feGaussianBlur stdDeviation="3" result="blur" />
-        <feComposite in="SourceGraphic" in2="blur" operator="over" />
-      </filter>
-    </defs>
-    <circle cx="32" cy="32" r="28" fill="#450a0a" stroke="#fbbf24" strokeWidth="2" />
-    <circle cx="32" cy="32" r="24" fill="url(#exort-glow)" filter="url(#exort-blur)" />
-    {/* Blazing Flame Core */}
-    <path
-      d="M32 14C32 14 39 23 39 30C39 34 36 38 32 46C28 38 25 34 25 30C25 23 32 14 32 14Z"
-      fill="#ffffff"
-      opacity="0.9"
-    />
-    <path
-      d="M32 26C32 26 36 32 36 35C36 37 34 40 32 44C30 40 28 37 28 35C28 32 32 26 32 26Z"
-      fill="#fef08a"
-    />
-  </svg>
+export const ExortIcon: React.FC<IconProps> = (props) => (
+  <OrbBase
+    kind="E"
+    title="Exort"
+    {...props}
+    glyph={
+      <g>
+        <path
+          d="M33 17c1 6 7 8 7 15 0 5-4 9-9 9s-9-4-9-9c0-4 2-6 4-9 0 3 1 5 3 6 0-5 2-8 4-12z"
+          fill="#fff7ed"
+        />
+        <path
+          d="M32 30c1 3 4 4 4 7 0 2-2 4-4 4s-4-2-4-4c0-2 1-3 2-4 0 1 1 2 1 2 0-2 1-3 1-5z"
+          fill="#fb923c"
+        />
+      </g>
+    }
+  />
 );
 
-export const InvokeIcon: React.FC<IconProps> = ({ size = 48, className, style }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 64 64"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    className={className}
-    style={style}
-  >
-    <defs>
-      <radialGradient id="invoke-glow" cx="50%" cy="50%" r="50%">
-        <stop offset="0%" stopColor="#fef08a" />
-        <stop offset="45%" stopColor="#a855f7" />
-        <stop offset="90%" stopColor="#3b0764" />
-      </radialGradient>
-    </defs>
-    <rect x="4" y="4" width="56" height="56" rx="10" fill="#1e1035" stroke="#c084fc" strokeWidth="2" />
-    <circle cx="32" cy="32" r="22" fill="url(#invoke-glow)" opacity="0.6" />
-    {/* Arcane Ring & Runes */}
-    <circle cx="32" cy="32" r="18" stroke="#fef08a" strokeWidth="2" strokeDasharray="6 3" />
-    <circle cx="32" cy="32" r="10" stroke="#fef08a" strokeWidth="1.5" />
-    <path d="M32 14V50M14 32H50" stroke="#ffffff" strokeWidth="2" opacity="0.8" />
-    <polygon points="32,20 42,32 32,44 22,32" fill="#fef08a" opacity="0.85" />
-  </svg>
-);
+export const InvokeIcon: React.FC<IconProps> = (props) => {
+  const uid = useId().replace(/:/g, "");
+  const { size = 48, className, style, title } = props;
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 64 64"
+      fill="none"
+      className={className}
+      style={style}
+      role="img"
+      aria-label={title ?? "Invoke"}
+    >
+      <defs>
+        <linearGradient id={`inv-${uid}`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#1e1b4b" />
+          <stop offset="100%" stopColor="#0b1020" />
+        </linearGradient>
+      </defs>
+      <rect width="64" height="64" rx="14" fill={`url(#inv-${uid})`} />
+      <rect
+        x="1"
+        y="1"
+        width="62"
+        height="62"
+        rx="13"
+        stroke="#c4b5fd"
+        strokeOpacity="0.35"
+        strokeWidth="1.5"
+      />
+      <circle
+        cx="32"
+        cy="32"
+        r="18"
+        stroke="#e9d5ff"
+        strokeOpacity="0.55"
+        strokeWidth="1.5"
+        strokeDasharray="5 4"
+      />
+      <circle cx="32" cy="32" r="10" stroke="#f5d0fe" strokeWidth="1.5" />
+      <path
+        d="M32 16l4.5 11.5L48 32l-11.5 4.5L32 48l-4.5-11.5L16 32l11.5-4.5z"
+        fill="#faf5ff"
+        fillOpacity="0.92"
+      />
+      <circle cx="32" cy="32" r="3" fill="#7c3aed" />
+    </svg>
+  );
+};
 
-export const SpellIcon: React.FC<{ id: SpellId; size?: number | string; className?: string }> = ({
-  id,
-  size = 54,
-  className,
-}) => {
-  switch (id) {
-    case "cold-snap":
-      return (
-        <svg width={size} height={size} viewBox="0 0 64 64" fill="none" className={className}>
-          <rect width="64" height="64" rx="8" fill="#082f49" stroke="#38bdf8" strokeWidth="2" />
-          <path d="M22 18H42L48 28L32 50L16 28L22 18Z" fill="#38bdf8" opacity="0.35" />
-          <path d="M32 14L38 28L52 32L40 40L42 54L32 44L22 54L24 40L12 32L26 28L32 14Z" fill="#bae6fd" />
-          <circle cx="32" cy="32" r="5" fill="#ffffff" />
-        </svg>
-      );
-    case "ghost-walk":
-      return (
-        <svg width={size} height={size} viewBox="0 0 64 64" fill="none" className={className}>
-          <rect width="64" height="64" rx="8" fill="#1e1b4b" stroke="#818cf8" strokeWidth="2" />
-          <path
-            d="M32 14C24 14 18 20 18 28C18 36 22 46 22 52L27 48L32 52L37 48L42 52C42 46 46 36 46 28C46 20 40 14 32 14Z"
-            fill="#a5b4fc"
-            opacity="0.85"
-          />
-          <circle cx="27" cy="27" r="3.5" fill="#c7d2fe" />
-          <circle cx="37" cy="27" r="3.5" fill="#c7d2fe" />
-          <circle cx="27" cy="27" r="1.5" fill="#1e1b4b" />
-          <circle cx="37" cy="27" r="1.5" fill="#1e1b4b" />
-        </svg>
-      );
-    case "ice-wall":
-      return (
-        <svg width={size} height={size} viewBox="0 0 64 64" fill="none" className={className}>
-          <rect width="64" height="64" rx="8" fill="#0c4a6e" stroke="#0284c7" strokeWidth="2" />
-          {/* Jagged Ice Spikes */}
-          <path d="M12 52L18 24L24 52L32 16L40 52L46 22L52 52Z" fill="#7dd3fc" />
-          <path d="M16 52L22 32L28 52L32 24L36 52L42 30L48 52Z" fill="#ffffff" opacity="0.9" />
-          <rect x="8" y="50" width="48" height="6" fill="#38bdf8" />
-        </svg>
-      );
-    case "emp":
-      return (
-        <svg width={size} height={size} viewBox="0 0 64 64" fill="none" className={className}>
-          <rect width="64" height="64" rx="8" fill="#3b0764" stroke="#d946ef" strokeWidth="2" />
-          <circle cx="32" cy="32" r="22" stroke="#f0abfc" strokeWidth="2" strokeDasharray="4 4" />
-          <circle cx="32" cy="32" r="14" fill="#c026d3" opacity="0.7" />
-          <circle cx="32" cy="32" r="6" fill="#ffffff" />
-          <path d="M32 10V20M32 44V54M10 32H20M44 32H54" stroke="#f5d0fe" strokeWidth="3" strokeLinecap="round" />
-        </svg>
-      );
-    case "tornado":
-      return (
-        <svg width={size} height={size} viewBox="0 0 64 64" fill="none" className={className}>
-          <rect width="64" height="64" rx="8" fill="#1e293b" stroke="#38bdf8" strokeWidth="2" />
-          {/* Swirling funnel */}
-          <path d="M14 16H50L44 24H20L14 16Z" fill="#bae6fd" />
-          <path d="M18 26H46L41 33H23L18 26Z" fill="#7dd3fc" />
-          <path d="M23 35H41L37 42H27L23 35Z" fill="#38bdf8" />
-          <path d="M28 44H36L34 52H30L28 44Z" fill="#ffffff" />
-        </svg>
-      );
-    case "alacrity":
-      return (
-        <svg width={size} height={size} viewBox="0 0 64 64" fill="none" className={className}>
-          <rect width="64" height="64" rx="8" fill="#4a044e" stroke="#e879f9" strokeWidth="2" />
-          {/* Twin Energy Blades */}
-          <path d="M20 50L30 14L34 18L26 52L20 50Z" fill="#f472b6" />
-          <path d="M44 50L34 14L30 18L38 52L44 50Z" fill="#fb7185" />
-          <polygon points="32,20 36,32 32,44 28,32" fill="#ffffff" />
-        </svg>
-      );
-    case "sun-strike":
-      return (
-        <svg width={size} height={size} viewBox="0 0 64 64" fill="none" className={className}>
-          <rect width="64" height="64" rx="8" fill="#450a0a" stroke="#fbbf24" strokeWidth="2" />
-          {/* Blinding Ray from heaven */}
-          <polygon points="32,6 40,42 24,42" fill="#fef08a" />
-          <polygon points="32,14 36,44 28,44" fill="#ffffff" />
-          <ellipse cx="32" cy="46" rx="18" ry="6" fill="#f59e0b" />
-          <ellipse cx="32" cy="46" rx="12" ry="4" fill="#ffffff" />
-        </svg>
-      );
-    case "forge-spirit":
-      return (
-        <svg width={size} height={size} viewBox="0 0 64 64" fill="none" className={className}>
-          <rect width="64" height="64" rx="8" fill="#311108" stroke="#ea580c" strokeWidth="2" />
-          {/* Fiery Elemental Visage */}
-          <path
-            d="M32 12C38 20 46 26 46 36C46 44 40 50 32 52C24 50 18 44 18 36C18 26 26 20 32 12Z"
-            fill="#f97316"
-          />
-          <path
-            d="M32 24C35 28 39 32 39 38C39 42 36 46 32 47C28 46 25 42 25 38C25 32 29 28 32 24Z"
-            fill="#fde047"
-          />
-          <circle cx="28" cy="34" r="2.5" fill="#ffffff" />
-          <circle cx="36" cy="34" r="2.5" fill="#ffffff" />
-        </svg>
-      );
-    case "chaos-meteor":
-      return (
-        <svg width={size} height={size} viewBox="0 0 64 64" fill="none" className={className}>
-          <rect width="64" height="64" rx="8" fill="#2e0808" stroke="#ef4444" strokeWidth="2" />
-          {/* Flaming asteroid descending */}
-          <path d="M12 12L38 38L32 44L6 18Z" fill="#f97316" opacity="0.6" />
-          <path d="M18 8L44 34L38 40L12 14Z" fill="#fbbf24" opacity="0.8" />
-          <circle cx="42" cy="42" r="14" fill="#dc2626" />
-          <circle cx="42" cy="42" r="10" fill="#f97316" />
-          <circle cx="40" cy="40" r="5" fill="#fef08a" />
-        </svg>
-      );
-    case "deafening-blast":
-      return (
-        <svg width={size} height={size} viewBox="0 0 64 64" fill="none" className={className}>
-          <rect width="64" height="64" rx="8" fill="#1c1917" stroke="#eab308" strokeWidth="2" />
-          {/* Expanding concentric sonic wave arcs */}
-          <path d="M16 16C26 24 26 40 16 48" stroke="#38bdf8" strokeWidth="4" strokeLinecap="round" />
-          <path d="M26 12C40 22 40 42 26 52" stroke="#d946ef" strokeWidth="4" strokeLinecap="round" />
-          <path d="M36 8C54 20 54 44 36 56" stroke="#f97316" strokeWidth="4" strokeLinecap="round" />
-          <circle cx="12" cy="32" r="4" fill="#ffffff" />
-        </svg>
-      );
-  }
+/* ---------------------------------------------------------------- spells */
+
+type GlyphProps = { color: string; accent: string };
+
+const GLYPHS: Record<SpellId, (p: GlyphProps) => React.ReactNode> = {
+  "cold-snap": ({ color }) => (
+    <g stroke={color} strokeWidth="2.6" strokeLinecap="round" fill="none">
+      <path d="M32 14v36M17 23l30 18M47 23L17 41" />
+      <path d="M28 17l4 4 4-4M28 47l4-4 4 4" />
+      <circle cx="32" cy="32" r="4.5" fill={color} stroke="none" />
+    </g>
+  ),
+  "ghost-walk": ({ color }) => (
+    <g>
+      <path
+        d="M32 12c-9 0-15 7-15 16 0 8 3 15 4 21l4-4 4 4 3-4 3 4 4-4 4 4c1-6 4-13 4-21 0-9-6-16-15-16z"
+        fill={color}
+        fillOpacity="0.92"
+      />
+      <circle cx="26" cy="29" r="3.4" fill="#0b1020" />
+      <circle cx="38" cy="29" r="3.4" fill="#0b1020" />
+    </g>
+  ),
+  "ice-wall": ({ color }) => (
+    <g fill={color}>
+      <path d="M14 52l7-24 7 24z" fillOpacity="0.75" />
+      <path d="M25 52l7-34 7 34z" />
+      <path d="M36 52l7-22 7 22z" fillOpacity="0.75" />
+      <rect x="12" y="50" width="40" height="4" rx="2" />
+    </g>
+  ),
+  emp: ({ color }) => (
+    <g fill="none" stroke={color} strokeLinecap="round">
+      <circle cx="32" cy="32" r="17" strokeWidth="2.4" strokeDasharray="6 5" />
+      <path
+        d="M34 18l-9 16h7l-2 12 11-17h-8z"
+        fill={color}
+        stroke="none"
+      />
+    </g>
+  ),
+  tornado: ({ color }) => (
+    <g stroke={color} strokeWidth="2.8" strokeLinecap="round" fill="none">
+      <path d="M14 18h36" />
+      <path d="M18 27h27" />
+      <path d="M23 36h18" />
+      <path d="M27 45h10" />
+      <path d="M31 53h4" />
+    </g>
+  ),
+  alacrity: ({ color, accent }) => (
+    <g>
+      <path d="M34 13l-11 19h8l-3 15 13-20h-9z" fill={color} />
+      <path
+        d="M16 30l6-6 6 6M36 44l6 6 6-6"
+        stroke={accent}
+        strokeWidth="2.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </g>
+  ),
+  "sun-strike": ({ color }) => (
+    <g>
+      <circle cx="32" cy="24" r="9" fill={color} />
+      <g stroke={color} strokeWidth="2.6" strokeLinecap="round">
+        <path d="M32 8v5M18 24h-5M51 24h-5M22 14l3.5 3.5M42 14l-3.5 3.5" />
+        <path d="M32 36v18" strokeWidth="3.4" opacity="0.8" />
+      </g>
+    </g>
+  ),
+  "forge-spirit": ({ color, accent }) => (
+    <g>
+      <path
+        d="M32 11c2 9 11 12 11 23 0 8-6 14-11 17-5-3-11-9-11-17 0-11 9-14 11-23z"
+        fill={color}
+      />
+      <path
+        d="M32 27c1 4 5 6 5 11 0 4-3 7-5 8-2-1-5-4-5-8 0-5 4-7 5-11z"
+        fill={accent}
+      />
+      <circle cx="28" cy="38" r="2" fill="#0b1020" />
+      <circle cx="36" cy="38" r="2" fill="#0b1020" />
+    </g>
+  ),
+  "chaos-meteor": ({ color, accent }) => (
+    <g>
+      <path
+        d="M12 12l16 10-6 6zM20 8l14 12-5 5z"
+        fill={accent}
+        opacity="0.85"
+      />
+      <circle cx="40" cy="42" r="14" fill={color} />
+      <circle cx="40" cy="42" r="8" fill={accent} />
+      <circle cx="37" cy="39" r="3.4" fill="#fff7ed" />
+    </g>
+  ),
+  "deafening-blast": ({ color }) => (
+    <g fill="none" stroke={color} strokeLinecap="round">
+      <circle cx="15" cy="32" r="4" fill={color} stroke="none" />
+      <path d="M25 21a15 15 0 010 22" strokeWidth="3" />
+      <path d="M35 15a24 24 0 010 34" strokeWidth="3" opacity="0.8" />
+      <path d="M45 9a33 33 0 010 46" strokeWidth="3" opacity="0.55" />
+    </g>
+  ),
+};
+
+export const SpellIcon: React.FC<{
+  id: SpellId;
+  size?: number | string;
+  className?: string;
+  style?: React.CSSProperties;
+}> = ({ id, size = 54, className, style }) => {
+  const uid = useId().replace(/:/g, "");
+  const spell = ALL_SPELLS[id];
+  const { primary, secondary } = orbMix(spell.recipe);
+  const a = ELEMENTS[primary];
+  const b = ELEMENTS[secondary];
+  const draw = GLYPHS[id];
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 64 64"
+      fill="none"
+      className={className}
+      style={style}
+      role="img"
+      aria-label={spell.name}
+    >
+      <defs>
+        <linearGradient id={`bg-${uid}`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor={a.deep} />
+          <stop offset="100%" stopColor={b.deep} />
+        </linearGradient>
+        <radialGradient id={`shine-${uid}`} cx="50%" cy="18%" r="70%">
+          <stop offset="0%" stopColor={a.mid} stopOpacity="0.45" />
+          <stop offset="100%" stopColor={a.mid} stopOpacity="0" />
+        </radialGradient>
+      </defs>
+      <rect width="64" height="64" rx="12" fill={`url(#bg-${uid})`} />
+      <rect width="64" height="64" rx="12" fill={`url(#shine-${uid})`} />
+      <rect
+        x="1"
+        y="1"
+        width="62"
+        height="62"
+        rx="11"
+        stroke={a.light}
+        strokeOpacity="0.4"
+        strokeWidth="1.5"
+      />
+      {draw({ color: "#f8fafc", accent: a.light })}
+    </svg>
+  );
+};
+
+export const ORB_ICONS: Record<OrbType, React.FC<IconProps>> = {
+  Q: QuasIcon,
+  W: WexIcon,
+  E: ExortIcon,
+};
+
+export const ORB_NAMES: Record<OrbType, string> = {
+  Q: "Quas",
+  W: "Wex",
+  E: "Exort",
 };

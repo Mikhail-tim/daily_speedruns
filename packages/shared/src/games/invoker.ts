@@ -314,7 +314,8 @@ export class InvokerGameEngine
       comboName,
       sequence: spells,
       targetIndex: 0,
-      orbs: ["Q", "W", "E"],
+      // Invoker starts with an empty orb bar; the last three presses are kept.
+      orbs: [],
       slotD: null,
       slotF: null,
       mistakes: 0,
@@ -345,6 +346,9 @@ export class InvokerGameEngine
     };
 
     if (action.type === "ORB") {
+      if (action.orb !== "Q" && action.orb !== "W" && action.orb !== "E") {
+        return { state, win: false, gameOver: false };
+      }
       nextState.orbs = [...nextState.orbs, action.orb].slice(-3);
       return { state: nextState, win: false, gameOver: false };
     }
@@ -461,6 +465,20 @@ export class InvokerGameEngine
 
       if (!action || typeof action !== "object" || !("type" in action)) {
         return { valid: false, reason: "Missing or malformed input action" };
+      }
+
+      // Reject anything the engine would silently ignore, so a run can never
+      // be verified from inputs the client could not have produced.
+      if (action.type === "ORB") {
+        if (action.orb !== "Q" && action.orb !== "W" && action.orb !== "E") {
+          return { valid: false, reason: "Unknown orb type" };
+        }
+      } else if (action.type === "CAST") {
+        if (action.slot !== "D" && action.slot !== "F") {
+          return { valid: false, reason: "Unknown spell slot" };
+        }
+      } else if (action.type !== "INVOKE") {
+        return { valid: false, reason: "Unknown action type" };
       }
 
       const prevTarget = state.targetIndex;

@@ -91,6 +91,52 @@ describe("Invoker Combo Sprint Engine & Verification", () => {
     assert.equal(state.slotF?.id, "sun-strike", "Sun strike moved to F");
   });
 
+  it("starts with an empty orb bar and needs three orbs to invoke", () => {
+    let state = engine.init(seed);
+    assert.deepEqual(state.orbs, [], "Invoker starts with no orbs up");
+
+    const early = engine.step(state, { type: "INVOKE" });
+    assert.equal(early.state.slotD, null);
+    assert.equal(early.invokedSpell, undefined);
+
+    state = engine.step(state, { type: "ORB", orb: "Q" }).state;
+    state = engine.step(state, { type: "ORB", orb: "Q" }).state;
+    assert.deepEqual(state.orbs, ["Q", "Q"]);
+
+    const stillEarly = engine.step(state, { type: "INVOKE" });
+    assert.equal(stillEarly.state.slotD, null);
+
+    state = engine.step(state, { type: "ORB", orb: "Q" }).state;
+    const coldSnap = engine.step(state, { type: "INVOKE" });
+    assert.equal(coldSnap.state.slotD?.id, "cold-snap");
+  });
+
+  it("rejects malformed actions instead of silently ignoring them", () => {
+    const badOrb = engine.verify(
+      seed,
+      [{ t: 100, action: { type: "ORB", orb: "X" } as unknown as InvokerAction }],
+      5000
+    );
+    assert.equal(badOrb.valid, false);
+    assert.match(badOrb.reason || "", /Unknown orb type/);
+
+    const badSlot = engine.verify(
+      seed,
+      [{ t: 100, action: { type: "CAST", slot: "Z" } as unknown as InvokerAction }],
+      5000
+    );
+    assert.equal(badSlot.valid, false);
+    assert.match(badSlot.reason || "", /Unknown spell slot/);
+
+    const badType = engine.verify(
+      seed,
+      [{ t: 100, action: { type: "TELEPORT" } as unknown as InvokerAction }],
+      5000
+    );
+    assert.equal(badType.valid, false);
+    assert.match(badType.reason || "", /Unknown action type/);
+  });
+
   it("advances target when correctly cast and increments mistakes on wrong cast", () => {
     let state = engine.init(seed);
     const target0 = state.sequence[0];
