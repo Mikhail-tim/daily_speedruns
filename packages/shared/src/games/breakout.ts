@@ -12,6 +12,11 @@ import {
  * ball moves in whole units per tick and every collision is resolved with
  * axis-aligned overlap tests. That keeps the edge replay byte-identical to the
  * client, which is what makes the leaderboard trustworthy.
+ *
+ * The ball has ONE speed. Direction is carried by the `vx`/`vy` components but
+ * the magnitude is a scalar that only bricks and the time ramp touch: a bounce
+ * re-aims the ball without making it faster, and a diagonal path is never
+ * quicker than a straight one.
  */
 
 export type BreakoutMove = "LEFT" | "RIGHT" | "STOP";
@@ -98,16 +103,15 @@ export const BREAKOUT_CONFIG = {
   BALL_RADIUS: 230,
   BALL_START_VX: 130,
   BALL_START_VY: -190,
-  BALL_SPEEDUP: 5,
+  /** The ball carries a single speed; bricks nudge the scalar, not the axes. */
+  BALL_SPEED_PER_BRICK: 7,
   /** Extra speed every `SPEEDUP_INTERVAL_TICKS`, so the endgame cannot drag. */
   SPEEDUP_INTERVAL_TICKS: 240,
-  SPEEDUP_EXTRA: 8,
-  BALL_MAX_VX: 330,
-  BALL_MAX_VY: 380,
-  PADDLE_MAX_VX: 300,
-  /** A paddle hit always leaves at least this much sideways travel. */
-  PADDLE_MIN_VX: 90,
-  PADDLE_MIN_VY: 230,
+  BALL_SPEED_PER_INTERVAL: 12,
+  BALL_MAX_SPEED: 505,
+  /** A paddle hit only steers, inside this cone around straight up. */
+  PADDLE_MAX_ANGLE_DEG: 55,
+  PADDLE_MIN_ANGLE_DEG: 20,
 
   LIVES: 3,
   SERVE_TICKS: 45,
@@ -136,6 +140,28 @@ export const BOARD_HEIGHT = ROWS * SUB;
 
 function clamp(value: number, min: number, max: number): number {
   return value < min ? min : value > max ? max : value;
+}
+
+/** Current scalar speed of the ball, in units per tick. */
+function ballSpeed(ball: Ball): number {
+  return Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+}
+
+/**
+ * Sets the ball's scalar speed, keeping its direction. Every speed change goes
+ * through here, so `vx`/`vy` can never drift apart and a diagonal ball is not
+ * faster than a straight one.
+ */
+function setBallSpeed(ball: Ball, speed: number): void {
+  const current = ballSpeed(ball);
+  const target = Math.max(0, speed);
+  if (current === 0) {
+    ball.vx = 0;
+    ball.vy = -Math.round(target);
+    return;
+  }
+  ball.vx = Math.round((ball.vx / current) * target);
+  ball.vy = Math.round((ball.vy / current) * target);
 }
 
 export function brickTop(row: number): number {
@@ -335,20 +361,16 @@ export class BreakoutGameEngine
         state.bricksBroken += 1;
       }
 
-      // Every impact nudges the ball faster, with a hard cap so the run
-      // stays humanly playable.
-      ball.vx =
-        Math.sign(ball.vx) *
+      // Every impact nudges the ball faster. Only the scalar changes, so the
+      // bounce direction survives and the nudge is a flat +SPEED_PER_BRICK
+      // however shallow the angle happens to be.
+      setBallSpeed(
+        ball,
         Math.min(
-          Math.abs(ball.vx) + BREAKOUT_CONFIG.BALL_SPEEDUP,
-          BREAKOUT_CONFIG.BALL_MAX_VX
-        );
-      ball.vy =
-        Math.sign(ball.vy) *
-        Math.min(
-          Math.abs(ball.vy) + BREAKOUT_CONFIG.BALL_SPEEDUP,
-          BREAKOUT_CONFIG.BALL_MAX_VY
-        );
+          ballSpeed(ball) + BREAKOUT_CONFIG.BALL_SPEED_PER_BRICK,
+          BREAKOUT_CONFIG.BALL_MAX_SPEED
+        )
+      );
 
       event = "brick";
       break;
@@ -365,20 +387,31 @@ export class BreakoutGameEngine
       ball.x - radius <= paddleRight
     ) {
       ball.y = PADDLE_TOP - radius;
+      // The hit offset only steers the ball: it leaves at the speed it arrived
+      // with, on an angle inside the cone, so a paddle edge can never spike the
+      // pace. Clamping the angle keeps the shot from going dead vertical and
+      // drilling a single column forever.
       const relative = clamp(
         (ball.x - (state.paddleX + PADDLE_WIDTH / 2)) / (PADDLE_WIDTH / 2),
         -1,
         1
       );
-      let vx = Math.round(relative * BREAKOUT_CONFIG.PADDLE_MAX_VX);
-      if (Math.abs(vx) < BREAKOUT_CONFIG.PADDLE_MIN_VX) {
-        const sign = vx !== 0 ? Math.sign(vx) : ball.vx >= 0 ? 1 : -1;
-        vx = sign * BREAKOUT_CONFIG.PADDLE_MIN_VX;
-      }
-      ball.vx = vx;
-      ball.vy = -Math.max(
-        BREAKOUT_CONFIG.PADDLE_MIN_VY,
-        Math.abs(ball.vy)
+      const speed = Math.min(
+        ballSpeed(ball),
+        BREAKOUT_CONFIG.BALL_MAX_SPEED
+      );
+      const side =
+        relative !== 0 ? Math.sign(relative) : ball.vx >= 0 ? 1 : -1;
+      const degrees =
+        side *
+        Math.max(
+          Math.abs(relative) * BREAKOUT_CONFIG.PADDLE_MAX_ANGLE_DEG,
+          BREAKOUT_CONFIG.PADDLE_MIN_ANGLE_DEG
+        );
+      const radians = (degrees * Math.PI) / 180;
+      ball.vx = Math.round(Math.sin(radians) * speed);
+      ball.vy = -Math.round(
+        Math.sqrt(Math.max(0, speed * speed - ball.vx * ball.vx))
       );
       state.paddleHits += 1;
       event = "paddle";
@@ -479,18 +512,13 @@ export class BreakoutGameEngine
     // Time pressure: the ball keeps accelerating, so a defensive game still
     // ends and the last bricks cannot be farmed forever.
     if (next.tickCount % BREAKOUT_CONFIG.SPEEDUP_INTERVAL_TICKS === 0) {
-      next.ball.vx =
-        Math.sign(next.ball.vx) *
+      setBallSpeed(
+        next.ball,
         Math.min(
-          Math.abs(next.ball.vx) + BREAKOUT_CONFIG.SPEEDUP_EXTRA,
-          BREAKOUT_CONFIG.BALL_MAX_VX
-        );
-      next.ball.vy =
-        Math.sign(next.ball.vy) *
-        Math.min(
-          Math.abs(next.ball.vy) + BREAKOUT_CONFIG.SPEEDUP_EXTRA,
-          BREAKOUT_CONFIG.BALL_MAX_VY
-        );
+          ballSpeed(next.ball) + BREAKOUT_CONFIG.BALL_SPEED_PER_INTERVAL,
+          BREAKOUT_CONFIG.BALL_MAX_SPEED
+        )
+      );
     }
 
     if (lost) {

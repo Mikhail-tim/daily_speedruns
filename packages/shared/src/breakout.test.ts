@@ -39,6 +39,11 @@ function ball(
   return next;
 }
 
+/** Scalar speed of the ball, in units per tick. */
+function speedOf(state: BreakoutState): number {
+  return Math.sqrt(state.ball.vx ** 2 + state.ball.vy ** 2);
+}
+
 describe("Breakout Sprint engine", () => {
   const engine = new BreakoutGameEngine();
 
@@ -116,6 +121,99 @@ describe("Breakout Sprint engine", () => {
     );
     assert.equal(edge.event, "paddle");
     assert.ok(edge.state.ball.vx > 0);
+  });
+
+  it("steers the ball without changing its speed", () => {
+    const base = engine.init(seed);
+    const centre = BREAKOUT_CONFIG.PADDLE_TOP - BREAKOUT_CONFIG.BALL_RADIUS + 60;
+    const incoming = 260;
+
+    const middle = engine.step(
+      ball(base, base.paddleX + BREAKOUT_CONFIG.PADDLE_WIDTH / 2, centre, 0, incoming),
+      { type: "MOVE", dir: "STOP" }
+    );
+    assert.equal(middle.event, "paddle");
+    assert.ok(
+      Math.abs(speedOf(middle.state) - incoming) <= 1.5,
+      "a centre hit keeps the pace"
+    );
+
+    const edge = engine.step(
+      ball(
+        base,
+        base.paddleX + BREAKOUT_CONFIG.PADDLE_WIDTH - 20,
+        centre,
+        0,
+        incoming
+      ),
+      { type: "MOVE", dir: "STOP" }
+    );
+    assert.equal(edge.event, "paddle");
+    assert.ok(
+      Math.abs(speedOf(edge.state) - incoming) <= 1.5,
+      "an edge hit keeps the pace too"
+    );
+    assert.ok(
+      Math.abs(edge.state.ball.vx) > Math.abs(middle.state.ball.vx),
+      "the edge steers harder than the centre"
+    );
+  });
+
+  it("travels the same distance whatever the angle", () => {
+    const base = engine.init(seed);
+    const start = { x: 6000, y: 6000 };
+
+    const straight = engine.step(
+      ball(base, start.x, start.y, 0, -300),
+      { type: "MOVE", dir: "STOP" }
+    );
+    const diagonal = engine.step(
+      ball(base, start.x, start.y, 212, -212),
+      { type: "MOVE", dir: "STOP" }
+    );
+
+    const straightDistance = Math.sqrt(
+      (straight.state.ball.x - start.x) ** 2 +
+        (straight.state.ball.y - start.y) ** 2
+    );
+    const diagonalDistance = Math.sqrt(
+      (diagonal.state.ball.x - start.x) ** 2 +
+        (diagonal.state.ball.y - start.y) ** 2
+    );
+
+    assert.ok(
+      Math.abs(straightDistance - 300) <= 1,
+      `straight travel was ${straightDistance}`
+    );
+    assert.ok(
+      Math.abs(diagonalDistance - straightDistance) <= 1.5,
+      "a diagonal path covers the same ground, not more"
+    );
+  });
+
+  it("nudges the speed by a flat amount per brick", () => {
+    const base = engine.init(seed);
+    const row = BREAKOUT_CONFIG.BRICK_ROWS - 1;
+    const index = brickIndex(row, 3);
+    const wall = { ...base, bricks: [...base.bricks] };
+    wall.bricks[index] = 1;
+
+    const rowTop = BRICK_TOP + row * BRICK_PITCH;
+    const insideY = rowTop + BREAKOUT_CONFIG.BRICK_HEIGHT - 100;
+    const before = 260;
+
+    const hit = engine.step(
+      ball(wall, 3 * BREAKOUT_CONFIG.SUB + 500, insideY, 0, -before),
+      { type: "MOVE", dir: "STOP" }
+    );
+
+    assert.equal(hit.event, "brick");
+    assert.ok(
+      Math.abs(
+        speedOf(hit.state) - (before + BREAKOUT_CONFIG.BALL_SPEED_PER_BRICK)
+      ) <= 1.5,
+      "one brick is one flat nudge, independent of the bounce angle"
+    );
   });
 
   it("damages bricks and clears them after their hit points run out", () => {

@@ -200,12 +200,20 @@ Clear a seeded brick wall with one ball and three lives.
 - **Deterministic physics:** a 16 ms fixed tick, integer fixed-point coordinates
   and four collision sub-steps per tick, so the browser and the edge worker
   simulate the exact same rally.
+- **One speed, no surprises:** the ball carries a single speed scalar and every
+  bounce re-derives the `vx`/`vy` pair from it, so a diagonal ball is never
+  faster than a straight one and the pace only moves when a brick is broken or
+  the time ramp ticks.
 - **Up to 48 bricks across 4 rows:** hard bricks up top (two hits, drawn
   cracked), single-hit bricks below, and a couple of seeded gaps so the ball can
   find a path through.
 - **Three lives.** A dropped ball costs a life; lose all three and the run ends
-  and cannot be submitted. The ball keeps accelerating over time, so the last
-  bricks can never be farmed forever.
+  and cannot be submitted. Each brick nudges the speed up and the clock adds a
+  little more every four seconds, so the last bricks can never be farmed
+  forever.
+- **Paddle hits steer, they don't spike:** the hit offset chooses an angle
+  between 20° and 55° off vertical at the ball's *current* speed, so an edge hit
+  turns the ball hard without instantly doubling the pace.
 - **Controls:** arrow keys / A D, or drag the paddle with the pointer. Space
   starts, Space or R retries.
 - A clear is replayed against the daily seed, with a 20-second floor on the
