@@ -211,6 +211,34 @@ Clear a seeded brick wall with one ball and three lives.
 - A clear is replayed against the daily seed, with a 20-second floor on the
   claimed time and a 500 ms drift tolerance, before it reaches the leaderboard.
 
+---
+
+### 🗝️ Tomb Escape
+
+Slide, stop, think. Tomb of the Mask meets an escape-the-maze puzzle across three
+generated floors.
+
+- **You slide until something stops you.** Walls, sealed gates and closed doors
+  end a slide, so every move is a commitment and every floor is a routing puzzle.
+- **Escape room floors.** The exit is walled in behind a door; the key for that
+  door is walled in behind a gate; the gate only opens while its switch is
+  pressed. Sliding into the door with the key in hand spends the key, opens the
+  door for good and carries you through.
+- **Proven, not hand-authored.** Each floor is generated from the daily seed and
+  verified by a breadth-first search over `(cell, key, door, gate)` states. A
+  floor is only accepted when the BFS finds a solution that needs at least 7 and
+  at most 26 slides, so every daily floor is guaranteed solvable and never
+  trivial. The optimal slide count is shown as **par** in the HUD.
+- **Three floors, one clock.** Clear the exit on floor 1, 2 and 3; keys, doors
+  and switches reset per floor while par accumulates.
+- **Controls:** arrows / WASD to slide, swipe on touch. Space starts, Space or R
+  retries, F toggles focus mode.
+- **Canvas dungeon:** beveled stone rubble, a glowing mask with a slide trail, an
+  iron portcullis, a pressure plate, a bar door and a pulsing portal — all drawn
+  in code, no external art.
+- A clean run is replayed by the server engine, requires one input per tick and
+  rejects runs that claim less than 6 seconds or drift past 500 ms.
+
 ## 🚀 Getting Started
 
 ### 1. Install dependencies

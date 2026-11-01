@@ -12,6 +12,7 @@ export * from "./games/minesweeper.js";
 export * from "./games/invoker.js";
 export * from "./games/frog.js";
 export * from "./games/breakout.js";
+export * from "./games/tomb.js";
 export * from "./games/captcha-manifest.js";
 export * from "./games/registry.js";
 

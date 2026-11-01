@@ -27,6 +27,7 @@ import { MinesweeperGame } from "./components/MinesweeperGame.js";
 import { InvokerGame } from "./components/InvokerGame.js";
 import { FrogCross } from "./components/FrogCross.js";
 import { BreakoutGame } from "./components/BreakoutGame.js";
+import { TombGame } from "./components/TombGame.js";
 import { MathSprint } from "./components/MathSprint.js";
 import { CaptchaGame } from "./components/CaptchaGame.js";
 import { DoomGame, type DoomSubmitResult } from "./components/DoomGame.js";
@@ -50,7 +51,8 @@ type GameId =
   | "minesweeper"
   | "invoker"
   | "frog"
-  | "breakout";
+  | "breakout"
+  | "tomb";
 type RailView = "today" | PlaceholderView;
 
 const GAME_RAIL: Array<{
@@ -70,6 +72,7 @@ const GAME_RAIL: Array<{
   { id: "frog", index: "09", label: "Frog Cross", meta: "5 homes" },
   { id: "invoker", index: "10", label: "Invoker", meta: "Combos" },
   { id: "breakout", index: "11", label: "Breakout", meta: "48 bricks" },
+  { id: "tomb", index: "12", label: "Tomb Escape", meta: "3 floors" },
 ];
 
 const RAIL_NAV: Array<{ id: RailView; index: string; label: string }> = [
@@ -582,9 +585,17 @@ export const App: React.FC = () => {
                       onToggleFocus={() => setIsFocusMode((prev) => !prev)}
                       onRunFinished={handleRunFinished}
                     />
-                  ) : (
+                  ) : selectedGame === "breakout" ? (
                     <BreakoutGame
                       key={`breakout-${activeChallenge.seed}`}
+                      seed={activeChallenge.seed}
+                      isFocusMode={isFocusMode}
+                      onToggleFocus={() => setIsFocusMode((prev) => !prev)}
+                      onRunFinished={handleRunFinished}
+                    />
+                  ) : (
+                    <TombGame
+                      key={`tomb-${activeChallenge.seed}`}
                       seed={activeChallenge.seed}
                       isFocusMode={isFocusMode}
                       onToggleFocus={() => setIsFocusMode((prev) => !prev)}
@@ -625,6 +636,11 @@ export const App: React.FC = () => {
                   ) : selectedGame === "breakout" ? (
                     <p>
                       <kbd>←</kbd><kbd>→</kbd> move <kbd>drag</kbd> aim
+                    </p>
+                  ) : selectedGame === "tomb" ? (
+                    <p>
+                      <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> slide
+                      <kbd>swipe</kbd> touch
                     </p>
                   ) : (
                     <p>
