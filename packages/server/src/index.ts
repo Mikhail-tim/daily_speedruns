@@ -416,6 +416,7 @@ export default {
         getOrCreateDailyChallenge(env.DB, today, "minesweeper"),
         getOrCreateDailyChallenge(env.DB, today, "frog"),
         getOrCreateDailyChallenge(env.DB, today, "invoker"),
+        getOrCreateDailyChallenge(env.DB, today, "breakout"),
         getOrCreateDailyChallenge(env.DB, today, "doom"),
       ])
     );

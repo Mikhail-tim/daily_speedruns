@@ -8,6 +8,7 @@ import { CaptchaEngine } from "./captcha.js";
 import { MinesweeperEngine } from "./minesweeper.js";
 import { InvokerGameEngine } from "./invoker.js";
 import { FrogGameEngine } from "./frog.js";
+import { BreakoutGameEngine } from "./breakout.js";
 import { doomEvent } from "./doom.js";
 
 // Global registry of game engines
@@ -23,6 +24,7 @@ const captchaEngine = new CaptchaEngine();
 const minesweeperEngine = new MinesweeperEngine();
 const invokerEngine = new InvokerGameEngine();
 const frogEngine = new FrogGameEngine();
+const breakoutEngine = new BreakoutGameEngine();
 
 registry.set(snakeEngine.gameId, snakeEngine);
 registry.set(wordleEngine.gameId, wordleEngine);
@@ -33,6 +35,7 @@ registry.set(captchaEngine.gameId, captchaEngine);
 registry.set(minesweeperEngine.gameId, minesweeperEngine);
 registry.set(invokerEngine.gameId, invokerEngine);
 registry.set(frogEngine.gameId, frogEngine);
+registry.set(breakoutEngine.gameId, breakoutEngine);
 
 // Doom is metadata-only: it has no seeded simulation, so its runs are verified
 // from a recorded demo rather than by replaying inputs. See games/doom.ts.

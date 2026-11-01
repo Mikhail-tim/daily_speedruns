@@ -4638,3 +4638,106 @@ body::-webkit-scrollbar,
 }
 
 
+
+/* =========================================================
+   BREAKOUT SPRINT
+   ========================================================= */
+.breakout-card {
+  max-width: 620px;
+}
+
+.breakout-board-wrapper {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 12 / 13;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--border-light);
+  background: #080b0e;
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.6);
+  touch-action: none;
+  cursor: none;
+}
+
+.breakout-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.breakout-overlay {
+  cursor: default;
+}
+
+.breakout-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.breakout-controls-keys {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.breakout-controls-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.breakout-serve-state {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.arena-app .breakout-card {
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+.arena-app .breakout-board-wrapper {
+  border: 1px solid var(--arena-line);
+  border-radius: 0;
+  background: #080b0e;
+  box-shadow: none;
+}
+
+.arena-app .breakout-stage-overlay {
+  background: rgba(11, 12, 14, 0.9);
+  color: var(--arena-text);
+  backdrop-filter: blur(4px);
+}
+
+.arena-app .breakout-board-wrapper > .canvas-overlay:not(.result-overlay) {
+  background: rgba(11, 12, 14, 0.9);
+  color: var(--arena-text);
+  backdrop-filter: blur(4px);
+}
+
+.arena-app
+  .breakout-board-wrapper
+  > .canvas-overlay:not(.result-overlay)
+  .overlay-title {
+  color: var(--arena-text);
+}
+
+.arena-app
+  .breakout-board-wrapper
+  > .canvas-overlay:not(.result-overlay)
+  .overlay-subtitle {
+  color: var(--arena-muted);
+}
+
+@media (max-width: 480px) {
+  .arena-app .breakout-card {
+    padding: 16px;
+  }
+}

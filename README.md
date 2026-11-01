@@ -191,6 +191,26 @@ Load orbs, invoke, cast. Ten Invoker spells, one order, one clock.
   second, and requires the last correct cast to match the claimed time within
   600 ms.
 
+---
+
+### 🧱 Breakout Sprint
+
+Clear a seeded brick wall with one ball and three lives.
+
+- **Deterministic physics:** a 16 ms fixed tick, integer fixed-point coordinates
+  and four collision sub-steps per tick, so the browser and the edge worker
+  simulate the exact same rally.
+- **Up to 48 bricks across 4 rows:** hard bricks up top (two hits, drawn
+  cracked), single-hit bricks below, and a couple of seeded gaps so the ball can
+  find a path through.
+- **Three lives.** A dropped ball costs a life; lose all three and the run ends
+  and cannot be submitted. The ball keeps accelerating over time, so the last
+  bricks can never be farmed forever.
+- **Controls:** arrow keys / A D, or drag the paddle with the pointer. Space
+  starts, Space or R retries.
+- A clear is replayed against the daily seed, with a 20-second floor on the
+  claimed time and a 500 ms drift tolerance, before it reaches the leaderboard.
+
 ## 🚀 Getting Started
 
 ### 1. Install dependencies
